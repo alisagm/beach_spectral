@@ -1,0 +1,119 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Logs
+*.log
+
+# Analysis outputs (keep structure, exclude generated data)
+analysis/training_output/*/
+analysis/training_output/*.csv
+analysis/training_output/*.json
+analysis/training_output/plots/
+analysis/feature_analysis/outputs/
+analysis/feature_analysis/data/*.csv
+
+# Validation outputs (keep validation scripts, exclude results)
+validation/outputs*/
+validation/plots/
+
+# Test outputs
+tests/outputs/
+tests/plots/
+
+# Generated data files
+*.csv
+*.json
+*.geojson
+*.tif
+*.tiff
+
+# Exception: Keep configuration and documentation JSON/CSV files
+!requirements.txt
+!**/README.md
+!**/IMPROVEMENT_PLAN.md
+!docs/**/*.json
+!INPUT/**/*.json
+!INPUT/**/*.csv
+
+# Plots and visualizations
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.svg
+
+# Raster data directories (too large for git)
+INPUT/rasters/
+INPUT/transects/
+data/
+rasters/
+transects/
+
+# Output directories
+output/
+outputs/
+results/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+
+# OS files
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Project-specific: Keep structure documentation
+!PROJECT_STATUS.md
+!README.md
+!CONTEXT.md
