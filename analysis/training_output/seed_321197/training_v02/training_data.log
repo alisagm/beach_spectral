@@ -1,0 +1,112 @@
+2025-10-15 08:36:39 - __main__ - INFO - ============================================================
+2025-10-15 08:36:39 - __main__ - INFO - TRAINING DATA GENERATION
+2025-10-15 08:36:39 - __main__ - INFO - ============================================================
+2025-10-15 08:36:39 - __main__ - INFO - Random seed: 321197
+2025-10-15 08:36:39 - __main__ - INFO - Step 1: Building raster spatial index...
+2025-10-15 08:36:39 - spectral_classifier.data_io - INFO - Found 30 raster files
+2025-10-15 08:36:39 - spectral_classifier.data_io - INFO - Built raster index with CRS: EPSG:26914
+2025-10-15 08:36:39 - __main__ - INFO - Step 2: Loading transects...
+2025-10-15 08:36:40 - spectral_classifier.data_io - INFO - Loaded 2108 transects from shorelineTransPais.json (CRS: EPSG:6343)
+2025-10-15 08:36:40 - __main__ - INFO - Total transects available: 2108
+2025-10-15 08:36:40 - __main__ - INFO - Step 3: Randomly sampling 10 transects...
+2025-10-15 08:36:40 - __main__ - INFO - Selected transect indices: [97, 375, 660, 929, 1072, 1135, 1217, 1512, 1775, 2074]
+2025-10-15 08:36:40 - __main__ - INFO - Selected transect IDs: [100, 378, 663, 932, 1075, 1138, 1220, 1515, 1778, 2077]
+2025-10-15 08:36:40 - __main__ - INFO - Step 4: Checking CRS compatibility...
+2025-10-15 08:36:40 - spectral_classifier.data_io - WARNING - Reprojecting transects from EPSG:6343 to EPSG:26914
+2025-10-15 08:36:40 - __main__ - INFO - Detected transect direction: east_to_west
+2025-10-15 08:36:40 - __main__ - INFO - Step 5: Processing 10 sampled transects...
+2025-10-15 08:36:40 - __main__ - INFO - [1/10] Processing transect 100
+2025-10-15 08:36:40 - spectral_classifier.sampler - INFO - Transect 100: sampled 302 points over 300.0m
+2025-10-15 08:36:40 - spectral_classifier.features - INFO - Computed 21 features
+2025-10-15 08:36:40 - spectral_classifier.classifier - INFO - Classification complete: {'WATER': np.int64(170), 'UNKNOWN': np.int64(65), 'DRY_BEACH': np.int64(35), 'BEACH_WET': np.int64(27), 'VEG_DUNES': np.int64(5)}
+2025-10-15 08:36:40 - spectral_classifier.classifier - INFO - Monotonic smoothing complete: {'UNKNOWN': np.int64(298), 'VEG_DUNES': np.int64(1), 'DRY_BEACH': np.int64(1), 'BEACH_WET': np.int64(1), 'WATER': np.int64(1)}
+2025-10-15 08:36:40 - spectral_classifier.transition - INFO - Detected 2 zone boundaries
+2025-10-15 08:36:41 - spectral_classifier.visualization - INFO - Saved clean plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\clean_plots\transect_100_clean.png
+2025-10-15 08:36:41 - spectral_classifier.visualization - INFO - Saved plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\classified_plots\transect_100_analysis.png
+2025-10-15 08:36:41 - __main__ - INFO -   [OK] Generated plots for transect 100
+2025-10-15 08:36:41 - __main__ - INFO - [2/10] Processing transect 378
+2025-10-15 08:36:41 - spectral_classifier.sampler - INFO - Transect 378: sampled 302 points over 300.0m
+2025-10-15 08:36:41 - spectral_classifier.features - INFO - Computed 21 features
+2025-10-15 08:36:41 - spectral_classifier.classifier - INFO - Classification complete: {'WATER': np.int64(159), 'UNKNOWN': np.int64(68), 'DRY_BEACH': np.int64(44), 'BEACH_WET': np.int64(24), 'VEG_DUNES': np.int64(7)}
+2025-10-15 08:36:41 - spectral_classifier.classifier - INFO - Monotonic smoothing complete: {'UNKNOWN': np.int64(298), 'VEG_DUNES': np.int64(1), 'DRY_BEACH': np.int64(1), 'BEACH_WET': np.int64(1), 'WATER': np.int64(1)}
+2025-10-15 08:36:41 - spectral_classifier.transition - INFO - Detected 3 zone boundaries
+2025-10-15 08:36:41 - spectral_classifier.visualization - INFO - Saved clean plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\clean_plots\transect_378_clean.png
+2025-10-15 08:36:42 - spectral_classifier.visualization - INFO - Saved plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\classified_plots\transect_378_analysis.png
+2025-10-15 08:36:42 - __main__ - INFO -   [OK] Generated plots for transect 378
+2025-10-15 08:36:42 - __main__ - INFO - [3/10] Processing transect 663
+2025-10-15 08:36:42 - spectral_classifier.sampler - INFO - Transect 663: sampled 302 points over 300.0m
+2025-10-15 08:36:42 - spectral_classifier.features - INFO - Computed 21 features
+2025-10-15 08:36:42 - spectral_classifier.classifier - INFO - Classification complete: {'WATER': np.int64(167), 'UNKNOWN': np.int64(54), 'DRY_BEACH': np.int64(45), 'BEACH_WET': np.int64(32), 'VEG_DUNES': np.int64(4)}
+2025-10-15 08:36:42 - spectral_classifier.classifier - INFO - Monotonic smoothing complete: {'UNKNOWN': np.int64(254), 'BEACH_WET': np.int64(46), 'VEG_DUNES': np.int64(1), 'WATER': np.int64(1)}
+2025-10-15 08:36:42 - spectral_classifier.transition - INFO - Detected 3 zone boundaries
+2025-10-15 08:36:42 - spectral_classifier.visualization - INFO - Saved clean plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\clean_plots\transect_663_clean.png
+2025-10-15 08:36:42 - spectral_classifier.visualization - INFO - Saved plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\classified_plots\transect_663_analysis.png
+2025-10-15 08:36:42 - __main__ - INFO -   [OK] Generated plots for transect 663
+2025-10-15 08:36:42 - __main__ - INFO - [4/10] Processing transect 932
+2025-10-15 08:36:42 - spectral_classifier.sampler - INFO - Transect 932: sampled 302 points over 300.0m
+2025-10-15 08:36:42 - spectral_classifier.features - INFO - Computed 21 features
+2025-10-15 08:36:42 - spectral_classifier.classifier - INFO - Classification complete: {'WATER': np.int64(167), 'UNKNOWN': np.int64(77), 'DRY_BEACH': np.int64(36), 'BEACH_WET': np.int64(19), 'VEG_DUNES': np.int64(3)}
+2025-10-15 08:36:42 - spectral_classifier.classifier - INFO - Monotonic smoothing complete: {'UNKNOWN': np.int64(263), 'BEACH_WET': np.int64(37), 'VEG_DUNES': np.int64(1), 'WATER': np.int64(1)}
+2025-10-15 08:36:42 - spectral_classifier.transition - INFO - Detected 4 zone boundaries
+2025-10-15 08:36:43 - spectral_classifier.visualization - INFO - Saved clean plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\clean_plots\transect_932_clean.png
+2025-10-15 08:36:43 - spectral_classifier.visualization - INFO - Saved plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\classified_plots\transect_932_analysis.png
+2025-10-15 08:36:43 - __main__ - INFO -   [OK] Generated plots for transect 932
+2025-10-15 08:36:43 - __main__ - INFO - [5/10] Processing transect 1075
+2025-10-15 08:36:43 - spectral_classifier.sampler - INFO - Transect 1075: sampled 301 points over 300.0m
+2025-10-15 08:36:43 - spectral_classifier.features - INFO - Computed 21 features
+2025-10-15 08:36:43 - spectral_classifier.classifier - INFO - Classification complete: {'WATER': np.int64(182), 'UNKNOWN': np.int64(57), 'DRY_BEACH': np.int64(38), 'BEACH_WET': np.int64(16), 'VEG_DUNES': np.int64(8)}
+2025-10-15 08:36:43 - spectral_classifier.classifier - INFO - Monotonic smoothing complete: {'UNKNOWN': np.int64(297), 'VEG_DUNES': np.int64(1), 'DRY_BEACH': np.int64(1), 'BEACH_WET': np.int64(1), 'WATER': np.int64(1)}
+2025-10-15 08:36:43 - spectral_classifier.transition - INFO - Detected 2 zone boundaries
+2025-10-15 08:36:43 - spectral_classifier.visualization - INFO - Saved clean plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\clean_plots\transect_1075_clean.png
+2025-10-15 08:36:43 - spectral_classifier.visualization - INFO - Saved plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\classified_plots\transect_1075_analysis.png
+2025-10-15 08:36:43 - __main__ - INFO -   [OK] Generated plots for transect 1075
+2025-10-15 08:36:43 - __main__ - INFO - [6/10] Processing transect 1138
+2025-10-15 08:36:44 - spectral_classifier.sampler - INFO - Transect 1138: sampled 302 points over 300.0m
+2025-10-15 08:36:44 - spectral_classifier.features - INFO - Computed 21 features
+2025-10-15 08:36:44 - spectral_classifier.classifier - INFO - Classification complete: {'WATER': np.int64(182), 'UNKNOWN': np.int64(49), 'DRY_BEACH': np.int64(37), 'VEG_DUNES': np.int64(17), 'BEACH_WET': np.int64(17)}
+2025-10-15 08:36:44 - spectral_classifier.classifier - INFO - Monotonic smoothing complete: {'UNKNOWN': np.int64(298), 'VEG_DUNES': np.int64(1), 'DRY_BEACH': np.int64(1), 'BEACH_WET': np.int64(1), 'WATER': np.int64(1)}
+2025-10-15 08:36:44 - spectral_classifier.transition - INFO - Detected 1 zone boundaries
+2025-10-15 08:36:44 - spectral_classifier.visualization - INFO - Saved clean plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\clean_plots\transect_1138_clean.png
+2025-10-15 08:36:44 - spectral_classifier.visualization - INFO - Saved plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\classified_plots\transect_1138_analysis.png
+2025-10-15 08:36:44 - __main__ - INFO -   [OK] Generated plots for transect 1138
+2025-10-15 08:36:44 - __main__ - INFO - [7/10] Processing transect 1220
+2025-10-15 08:36:44 - spectral_classifier.sampler - INFO - Transect 1220: sampled 302 points over 300.0m
+2025-10-15 08:36:44 - spectral_classifier.features - INFO - Computed 21 features
+2025-10-15 08:36:44 - spectral_classifier.classifier - INFO - Classification complete: {'WATER': np.int64(167), 'UNKNOWN': np.int64(62), 'BEACH_WET': np.int64(33), 'DRY_BEACH': np.int64(30), 'VEG_DUNES': np.int64(10)}
+2025-10-15 08:36:44 - spectral_classifier.classifier - INFO - Monotonic smoothing complete: {'UNKNOWN': np.int64(269), 'BEACH_WET': np.int64(31), 'VEG_DUNES': np.int64(1), 'WATER': np.int64(1)}
+2025-10-15 08:36:44 - spectral_classifier.transition - INFO - Detected 3 zone boundaries
+2025-10-15 08:36:45 - spectral_classifier.visualization - INFO - Saved clean plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\clean_plots\transect_1220_clean.png
+2025-10-15 08:36:45 - spectral_classifier.visualization - INFO - Saved plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\classified_plots\transect_1220_analysis.png
+2025-10-15 08:36:45 - __main__ - INFO -   [OK] Generated plots for transect 1220
+2025-10-15 08:36:45 - __main__ - INFO - [8/10] Processing transect 1515
+2025-10-15 08:36:45 - spectral_classifier.sampler - INFO - Transect 1515: sampled 301 points over 300.0m
+2025-10-15 08:36:45 - spectral_classifier.features - INFO - Computed 21 features
+2025-10-15 08:36:45 - spectral_classifier.classifier - INFO - Classification complete: {'WATER': np.int64(163), 'UNKNOWN': np.int64(46), 'DRY_BEACH': np.int64(42), 'BEACH_WET': np.int64(27), 'VEG_DUNES': np.int64(23)}
+2025-10-15 08:36:45 - spectral_classifier.classifier - INFO - Monotonic smoothing complete: {'UNKNOWN': np.int64(297), 'VEG_DUNES': np.int64(1), 'DRY_BEACH': np.int64(1), 'BEACH_WET': np.int64(1), 'WATER': np.int64(1)}
+2025-10-15 08:36:45 - spectral_classifier.transition - INFO - Detected 2 zone boundaries
+2025-10-15 08:36:45 - spectral_classifier.visualization - INFO - Saved clean plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\clean_plots\transect_1515_clean.png
+2025-10-15 08:36:45 - spectral_classifier.visualization - INFO - Saved plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\classified_plots\transect_1515_analysis.png
+2025-10-15 08:36:45 - __main__ - INFO -   [OK] Generated plots for transect 1515
+2025-10-15 08:36:45 - __main__ - INFO - [9/10] Processing transect 1778
+2025-10-15 08:36:45 - spectral_classifier.sampler - INFO - Transect 1778: sampled 302 points over 300.0m
+2025-10-15 08:36:46 - spectral_classifier.features - INFO - Computed 21 features
+2025-10-15 08:36:46 - spectral_classifier.classifier - INFO - Classification complete: {'WATER': np.int64(172), 'UNKNOWN': np.int64(58), 'DRY_BEACH': np.int64(33), 'BEACH_WET': np.int64(31), 'VEG_DUNES': np.int64(8)}
+2025-10-15 08:36:46 - spectral_classifier.classifier - INFO - Monotonic smoothing complete: {'UNKNOWN': np.int64(259), 'BEACH_WET': np.int64(42), 'WATER': np.int64(1)}
+2025-10-15 08:36:46 - spectral_classifier.transition - INFO - Detected 0 zone boundaries
+2025-10-15 08:36:46 - spectral_classifier.visualization - INFO - Saved clean plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\clean_plots\transect_1778_clean.png
+2025-10-15 08:36:46 - spectral_classifier.visualization - INFO - Saved plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\classified_plots\transect_1778_analysis.png
+2025-10-15 08:36:46 - __main__ - INFO -   [OK] Generated plots for transect 1778
+2025-10-15 08:36:46 - __main__ - INFO - [10/10] Processing transect 2077
+2025-10-15 08:36:46 - spectral_classifier.sampler - INFO - Transect 2077: sampled 302 points over 300.0m
+2025-10-15 08:36:46 - spectral_classifier.features - INFO - Computed 21 features
+2025-10-15 08:36:46 - spectral_classifier.classifier - INFO - Classification complete: {'WATER': np.int64(159), 'DRY_BEACH': np.int64(76), 'UNKNOWN': np.int64(53), 'BEACH_WET': np.int64(14)}
+2025-10-15 08:36:46 - spectral_classifier.classifier - INFO - Monotonic smoothing complete: {'UNKNOWN': np.int64(299), 'DRY_BEACH': np.int64(1), 'BEACH_WET': np.int64(1), 'WATER': np.int64(1)}
+2025-10-15 08:36:46 - spectral_classifier.transition - INFO - Detected 3 zone boundaries
+2025-10-15 08:36:46 - spectral_classifier.visualization - INFO - Saved clean plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\clean_plots\transect_2077_clean.png
+2025-10-15 08:36:47 - spectral_classifier.visualization - INFO - Saved plot to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\classified_plots\transect_2077_analysis.png
+2025-10-15 08:36:47 - __main__ - INFO -   [OK] Generated plots for transect 2077
+2025-10-15 08:36:47 - __main__ - INFO - Successfully processed 10/10 transects
+2025-10-15 08:36:47 - __main__ - INFO - Step 6: Exporting spectral data...
+2025-10-15 08:36:47 - __main__ - INFO - Saved spectral data to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\sampled_spectral_data.csv
+2025-10-15 08:36:47 - __main__ - INFO - Step 7: Exporting metadata...
+2025-10-15 08:36:47 - __main__ - INFO - Saved metadata to C:\Users\alisa\Desktop\SIP\git\beach_spectral\training_output\training_sample_info.json

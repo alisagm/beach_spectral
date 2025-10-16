@@ -1,0 +1,319 @@
+"""
+Main pipeline orchestration for spectral transect classification system.
+"""
+
+import logging
+import argparse
+from pathlib import Path
+from typing import List, Dict
+
+from .config import NUM_TRANSECTS_TO_VISUALIZE, VERBOSE, DEFAULT_BOUNDARY_TYPES
+from .data_io import (
+    build_raster_index,
+    load_transects,
+    reproject_if_needed,
+    find_overlapping_rasters
+)
+from .sampler import sample_transect, validate_spectral_data
+from .features import SpectralFeatures
+from .classifier import LandcoverClassifier
+from .transition import TransitionDetector
+from .visualization import plot_transect_analysis
+from .utils import (
+    setup_logging,
+    export_results_to_csv,
+    export_summary_json,
+    select_representative_transects,
+    validate_output_directory,
+    calculate_processing_stats,
+    print_processing_summary,
+    detect_transect_direction
+)
+
+logger = logging.getLogger(__name__)
+
+
+def analyze_all_transects(
+    raster_dir: Path,
+    transect_geojson: Path,
+    output_dir: Path,
+    num_visualize: int = NUM_TRANSECTS_TO_VISUALIZE,
+    verbose: bool = VERBOSE,
+    boundary_types: str = DEFAULT_BOUNDARY_TYPES
+) -> List[Dict]:
+    """
+    Main pipeline to analyze all transects.
+
+    Args:
+        raster_dir: Directory containing GeoTIFF rasters
+        transect_geojson: Path to GeoJSON file with transects
+        output_dir: Directory to save outputs
+        num_visualize: Number of transects to visualize
+        verbose: Enable verbose logging
+        boundary_types: Which boundary types to return
+            - 'shore_only': BEACH_DRY→BEACH_WET only (swash/shell line)
+            - 'waterline': Shore + BEACH_WET→WATER boundaries
+            - 'all': All boundaries including VEG_DUNES→BEACH_DRY
+
+    Returns:
+        List of all transect analysis results
+    """
+    # Setup
+    output_dir = validate_output_directory(output_dir)
+    log_file = output_dir / 'processing.log'
+    setup_logging(verbose=verbose, log_file=log_file)
+
+    logger.info("=" * 60)
+    logger.info("SPECTRAL TRANSECT CLASSIFICATION SYSTEM")
+    logger.info("=" * 60)
+    logger.info(f"Boundary detection mode: {boundary_types}")
+
+    # Step 1: Build raster spatial index
+    logger.info("Step 1: Building raster spatial index...")
+    raster_index = build_raster_index(raster_dir)
+
+    # Step 2: Load transects and handle CRS
+    logger.info("Step 2: Loading transects...")
+    transects = load_transects(transect_geojson)
+
+    logger.info("Step 3: Checking CRS compatibility...")
+    transects = reproject_if_needed(transects, raster_index.crs)
+
+    # Detect transect direction from first transect
+    first_transect = transects.iloc[0]
+    direction = detect_transect_direction(first_transect.geometry)
+    logger.info(f"Detected transect direction: {direction}")
+    logger.info(f"All transects will be plotted with west at 0m (lowest easting on left)")
+
+    # Step 4: Process each transect sequentially
+    logger.info(f"Step 4: Processing {len(transects)} transects...")
+    all_results = []
+
+    for idx, transect in transects.iterrows():
+        try:
+            result = process_single_transect(
+                transect,
+                raster_index,
+                idx + 1,
+                len(transects),
+                direction,
+                boundary_types
+            )
+            all_results.append(result)
+
+        except Exception as e:
+            logger.error(
+                f"Failed to process transect {transect.TransectID}: {e}",
+                exc_info=True
+            )
+            continue
+
+    if not all_results:
+        raise RuntimeError("No transects were successfully processed")
+
+    logger.info(f"Successfully processed {len(all_results)}/{len(transects)} transects")
+
+    # Step 5: Export results
+    logger.info("Step 5: Exporting results...")
+    csv_path = export_results_to_csv(all_results, output_dir)
+
+    processing_stats = calculate_processing_stats(all_results)
+    json_path = export_summary_json(
+        all_results,
+        output_dir,
+        processing_metadata={
+            'raster_dir': str(raster_dir),
+            'transect_file': str(transect_geojson),
+            'raster_crs': str(raster_index.crs)
+        }
+    )
+
+    # Step 6: Generate visualizations for selected transects
+    logger.info(f"Step 6: Generating visualizations for {num_visualize} transects...")
+    selected_transects = select_representative_transects(all_results, num_visualize)
+
+    for result in selected_transects:
+        try:
+            plot_transect_analysis(result, output_dir)
+        except Exception as e:
+            logger.error(
+                f"Failed to plot transect {result['transect_id']}: {e}",
+                exc_info=True
+            )
+
+    # Print summary
+    print_processing_summary(processing_stats)
+
+    logger.info("Processing complete!")
+    logger.info(f"Results saved to: {output_dir}")
+
+    return all_results
+
+
+def process_single_transect(
+    transect_row,
+    raster_index,
+    current_idx: int,
+    total: int,
+    direction: str = 'west_to_east',
+    boundary_types: str = DEFAULT_BOUNDARY_TYPES
+) -> Dict:
+    """
+    Process a single transect through the analysis pipeline.
+
+    Args:
+        transect_row: Row from transects GeoDataFrame
+        raster_index: RasterIndex object
+        current_idx: Current transect number
+        total: Total number of transects
+        direction: Transect direction ('west_to_east' or 'east_to_west')
+        boundary_types: Which boundary types to return
+            - 'shore_only': BEACH_DRY→BEACH_WET only (swash/shell line)
+            - 'waterline': Shore + BEACH_WET→WATER boundaries
+            - 'all': All boundaries including VEG_DUNES→BEACH_DRY
+
+    Returns:
+        Dictionary with analysis results
+    """
+    transect_id = transect_row.TransectID
+
+    logger.info(f"[{current_idx}/{total}] Processing transect {transect_id}")
+
+    # Find intersecting rasters
+    overlapping_rasters = find_overlapping_rasters(
+        transect_row.geometry,
+        raster_index
+    )
+
+    logger.debug(f"  Found {len(overlapping_rasters)} overlapping rasters")
+
+    # Sample spectral values
+    spectral_data = sample_transect(transect_row, overlapping_rasters, direction)
+    validate_spectral_data(spectral_data)
+
+    logger.debug(f"  Sampled {len(spectral_data)} points")
+
+    # Extract features
+    feature_extractor = SpectralFeatures(spectral_data)
+    features = feature_extractor.compute_all()
+
+    logger.debug(f"  Computed {len(features.columns)} features")
+
+    # Classify landcover
+    classifier = LandcoverClassifier()
+    landcover = classifier.classify(features)
+
+    # Apply spatial smoothing
+    landcover = classifier.apply_spatial_smoothing(landcover)
+
+    # Log class distribution
+    class_counts = landcover['predicted_class'].value_counts()
+    logger.debug(f"  Classification: {dict(class_counts)}")
+
+    # Detect transitions
+    detector = TransitionDetector()
+    all_transitions = detector.find_transitions(features, landcover)
+
+    # Filter transitions by boundary type
+    transitions = TransitionDetector.filter_by_boundary_type(all_transitions, boundary_types)
+
+    logger.debug(f"  Detected {len(all_transitions)} transitions, "
+                f"returned {len(transitions)} (mode: {boundary_types})")
+
+    # Return results
+    return {
+        'transect_id': transect_id,
+        'data': spectral_data,
+        'features': features,
+        'landcover': landcover,
+        'transitions': transitions,
+        'direction': direction
+    }
+
+
+def main():
+    """Command-line interface for the spectral classifier."""
+    parser = argparse.ArgumentParser(
+        description='Spectral Transect Classification System',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Example usage:
+  python -m spectral_classifier.main \\
+    --rasters /path/to/rasters \\
+    --transects /path/to/transects.geojson \\
+    --output /path/to/output \\
+    --num-visualize 5
+        """
+    )
+
+    parser.add_argument(
+        '--rasters',
+        type=Path,
+        required=True,
+        help='Directory containing GeoTIFF raster files'
+    )
+
+    parser.add_argument(
+        '--transects',
+        type=Path,
+        required=True,
+        help='Path to GeoJSON file with transect LineStrings'
+    )
+
+    parser.add_argument(
+        '--output',
+        type=Path,
+        required=True,
+        help='Directory to save output files'
+    )
+
+    parser.add_argument(
+        '--num-visualize',
+        type=int,
+        default=NUM_TRANSECTS_TO_VISUALIZE,
+        help=f'Number of transects to visualize (default: {NUM_TRANSECTS_TO_VISUALIZE})'
+    )
+
+    parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help='Enable verbose debug logging'
+    )
+
+    parser.add_argument(
+        '--boundary-types',
+        type=str,
+        choices=['shore_only', 'waterline', 'all'],
+        default=DEFAULT_BOUNDARY_TYPES,
+        help=(
+            'Which boundary types to detect and return '
+            '(default: shore_only for BEACH_DRY→BEACH_WET swash line only)'
+        )
+    )
+
+    args = parser.parse_args()
+
+    # Run pipeline
+    try:
+        results = analyze_all_transects(
+            raster_dir=args.rasters,
+            transect_geojson=args.transects,
+            output_dir=args.output,
+            num_visualize=args.num_visualize,
+            verbose=args.verbose,
+            boundary_types=args.boundary_types
+        )
+
+        print(f"\nSuccess! Processed {len(results)} transects.")
+        print(f"Results saved to: {args.output}")
+
+    except Exception as e:
+        logger.error(f"Processing failed: {e}", exc_info=True)
+        print(f"\nERROR: {e}")
+        return 1
+
+    return 0
+
+
+if __name__ == '__main__':
+    exit(main())

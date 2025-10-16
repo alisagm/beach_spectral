@@ -1,0 +1,192 @@
+{
+  "generation_timestamp": "2025-10-15T10:29:05.938557",
+  "random_seed": 612823,
+  "num_samples_requested": 10,
+  "num_samples_processed": 10,
+  "total_transects_available": 2108,
+  "sampled_indices": [
+    100,
+    193,
+    459,
+    583,
+    661,
+    869,
+    944,
+    959,
+    1452,
+    2103
+  ],
+  "sampled_transect_ids": [
+    103,
+    196,
+    462,
+    586,
+    664,
+    872,
+    947,
+    962,
+    1455,
+    2106
+  ],
+  "direction": "east_to_west",
+  "raster_dir": "C:\\Users\\alisa\\Desktop\\SIP\\NAIP22",
+  "transect_file": "C:\\Users\\alisa\\Desktop\\SIP\\git\\beach_spectral\\INPUT\\shorelineTransPais.json",
+  "raster_crs": "EPSG:26914",
+  "output_directories": {
+    "clean_plots": "C:\\Users\\alisa\\Desktop\\SIP\\git\\beach_spectral\\training_output\\clean_plots",
+    "classified_plots": "C:\\Users\\alisa\\Desktop\\SIP\\git\\beach_spectral\\training_output\\classified_plots"
+  },
+  "transect_summary": [
+    {
+      "transect_id": 103,
+      "num_points": 302,
+      "distance_range_m": [
+        0.0,
+        300.0000166326675
+      ],
+      "class_distribution": {
+        "UNKNOWN": 296,
+        "DRY_BEACH": 4,
+        "BEACH_WET": 1,
+        "WATER": 1
+      },
+      "num_transitions": 0
+    },
+    {
+      "transect_id": 196,
+      "num_points": 302,
+      "distance_range_m": [
+        0.0,
+        300.00000601264657
+      ],
+      "class_distribution": {
+        "UNKNOWN": 298,
+        "VEG_DUNES": 1,
+        "DRY_BEACH": 1,
+        "BEACH_WET": 1,
+        "WATER": 1
+      },
+      "num_transitions": 0
+    },
+    {
+      "transect_id": 462,
+      "num_points": 302,
+      "distance_range_m": [
+        0.0,
+        300.00006983120875
+      ],
+      "class_distribution": {
+        "UNKNOWN": 299,
+        "DRY_BEACH": 1,
+        "BEACH_WET": 1,
+        "WATER": 1
+      },
+      "num_transitions": 1
+    },
+    {
+      "transect_id": 586,
+      "num_points": 302,
+      "distance_range_m": [
+        0.0,
+        300.0000192642931
+      ],
+      "class_distribution": {
+        "UNKNOWN": 262,
+        "BEACH_WET": 38,
+        "VEG_DUNES": 1,
+        "WATER": 1
+      },
+      "num_transitions": 0
+    },
+    {
+      "transect_id": 664,
+      "num_points": 302,
+      "distance_range_m": [
+        0.0,
+        300.00000863578924
+      ],
+      "class_distribution": {
+        "UNKNOWN": 298,
+        "VEG_DUNES": 1,
+        "DRY_BEACH": 1,
+        "BEACH_WET": 1,
+        "WATER": 1
+      },
+      "num_transitions": 0
+    },
+    {
+      "transect_id": 872,
+      "num_points": 301,
+      "distance_range_m": [
+        0.0,
+        299.99995358021175
+      ],
+      "class_distribution": {
+        "UNKNOWN": 264,
+        "BEACH_WET": 36,
+        "WATER": 1
+      },
+      "num_transitions": 0
+    },
+    {
+      "transect_id": 947,
+      "num_points": 302,
+      "distance_range_m": [
+        0.0,
+        300.00003384920626
+      ],
+      "class_distribution": {
+        "UNKNOWN": 267,
+        "BEACH_WET": 33,
+        "VEG_DUNES": 1,
+        "WATER": 1
+      },
+      "num_transitions": 0
+    },
+    {
+      "transect_id": 962,
+      "num_points": 301,
+      "distance_range_m": [
+        0.0,
+        299.99994559947686
+      ],
+      "class_distribution": {
+        "UNKNOWN": 298,
+        "DRY_BEACH": 1,
+        "BEACH_WET": 1,
+        "WATER": 1
+      },
+      "num_transitions": 1
+    },
+    {
+      "transect_id": 1455,
+      "num_points": 301,
+      "distance_range_m": [
+        0.0,
+        299.9999400857204
+      ],
+      "class_distribution": {
+        "UNKNOWN": 267,
+        "BEACH_WET": 32,
+        "VEG_DUNES": 1,
+        "WATER": 1
+      },
+      "num_transitions": 0
+    },
+    {
+      "transect_id": 2106,
+      "num_points": 302,
+      "distance_range_m": [
+        0.0,
+        300.00000917693126
+      ],
+      "class_distribution": {
+        "UNKNOWN": 215,
+        "BEACH_WET": 85,
+        "VEG_DUNES": 1,
+        "WATER": 1
+      },
+      "num_transitions": 0
+    }
+  ]
+}
