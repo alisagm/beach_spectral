@@ -1,8 +1,12 @@
 """
-Training data generation script for manual annotation and threshold tuning.
+Validation sample generation script for manual annotation and classifier testing.
 
-This script randomly selects transects and generates clean spectral plots
-for manual annotation, plus classified plots for comparison.
+This script randomly selects transects and generates:
+- Clean spectral plots for manual annotation
+- Classified plots for comparison
+- Spectral data CSV for validation
+
+Used to create ground truth datasets for validating classifier performance.
 """
 
 import logging
@@ -313,6 +317,30 @@ def process_transect_for_training(
     detector = TransitionDetector()
     all_transitions = detector.find_transitions(features, landcover)
 
+    # PHASE 7B: Extract shell line for boundary correction
+    # Phase 7A guarantees at least one shell line detection
+    shell_lines = [t for t in all_transitions
+                   if TransitionDetector.is_shore_boundary(t)]
+
+    if shell_lines:
+        # Take the first (and should be only) shell line
+        shell_line = shell_lines[0]
+        shell_line_distance = shell_line['distance']
+
+        # Apply boundary-aware classification correction
+        landcover = classifier.apply_boundary_aware_correction(
+            landcover,
+            shell_line_distance,
+            correction_mode='strict',  # Can be made configurable
+            correction_buffer=2.0
+        )
+
+        # Re-log class distribution after correction
+        class_counts_after = landcover['predicted_class'].value_counts()
+        logger.debug(f"  Classification after boundary correction: {dict(class_counts_after)}")
+    else:
+        logger.warning(f"  No shell line detected for transect {transect_id} - skipping boundary correction")
+
     # Filter transitions by boundary type
     transitions = TransitionDetector.filter_by_boundary_type(all_transitions, boundary_types)
 
@@ -331,18 +359,18 @@ def process_transect_for_training(
 
 
 def main():
-    """Command-line interface for training data generation."""
+    """Command-line interface for validation sample generation."""
     parser = argparse.ArgumentParser(
-        description='Generate training data for spectral classifier threshold tuning',
+        description='Generate validation samples for spectral classifier testing',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Example usage:
-  python -m tools.training_data \\
-    --rasters /path/to/rasters \\
-    --transects /path/to/transects.geojson \\
-    --output /path/to/training_output \\
+  python -m tools.generate_validation_samples \\
+    --rasters C:\\Users\\alisa\\Desktop\\SIP\\input_data\\NAIP22 \\
+    --transects C:\\Users\\alisa\\Desktop\\SIP\\input_data\\PAIS_measured \\
+    --output data/output/321197_run_001 \\
     --num-samples 10 \\
-    --seed 42
+    --seed 321197
 
 This will:
   1. Randomly sample 10 transects

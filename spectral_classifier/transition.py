@@ -71,6 +71,12 @@ class TransitionDetector:
         # This ensures we pick the BEST candidate even if weak, and enforces uniqueness
         dw_transitions = self._select_best_shell_line_candidate(dw_transitions, features)
 
+        # PHASE 7A DEBUG: Log what was returned
+        logger.info(f"_select_best_shell_line_candidate returned {len(dw_transitions)} transitions")
+        for i, t in enumerate(dw_transitions):
+            logger.info(f"  [{i}] dist={t['distance']:.1f}m, conf={t['confidence']:.2f}, "
+                       f"guaranteed={t.get('guaranteed_shell_line', False)}")
+
         all_transitions.extend(dw_transitions)
 
         logger.debug(f"Total candidates from all methods: {len(all_transitions)}")
@@ -407,7 +413,28 @@ class TransitionDetector:
 
         filtered = []
 
+        # PHASE 7A DEBUG: Log what's coming in
+        logger.info(f"_filter_transitions: Received {len(transitions)} transitions to filter")
+        for i, t in enumerate(transitions):
+            logger.info(f"  [{i}] dist={t['distance']:.1f}m, conf={t['confidence']:.2f}, "
+                       f"method={t.get('detection_method', '?')}, "
+                       f"guaranteed={t.get('guaranteed_shell_line', False)}")
+
         for transition in transitions:
+            # PHASE 7A FIX: Preserve guaranteed shell lines regardless of other checks
+            is_guaranteed = transition.get('guaranteed_shell_line', False)
+
+            if is_guaranteed:
+                logger.info(f"Preserving guaranteed shell line at {transition['distance']:.1f}m "
+                           f"(mode={transition.get('detection_mode', 'unknown')}, "
+                           f"bypassing standard filters)")
+                # Set transition flag for guaranteed shell lines
+                idx = transition['index']
+                if 0 <= idx < len(landcover):
+                    landcover.loc[idx, 'transition_flag'] = True
+                filtered.append(transition)
+                continue
+
             # PHASE 6C: Use relaxed threshold for fallback mode candidates
             detection_mode = transition.get('detection_mode', 'strict')
             if detection_mode == 'fallback':
@@ -960,8 +987,16 @@ class TransitionDetector:
 
             # Keep the one with highest confidence from candidates of same type
             if len(candidates) > 1:
-                best = max(candidates, key=lambda x: x['confidence'])
-                logger.debug(f"Selected best {current_method} with conf={best['confidence']:.2f} from {len(candidates)} candidates")
+                # PHASE 7A FIX: Always prefer guaranteed transitions over non-guaranteed
+                guaranteed_candidates = [c for c in candidates if c.get('guaranteed_shell_line', False)]
+                if guaranteed_candidates:
+                    # Select best guaranteed candidate
+                    best = max(guaranteed_candidates, key=lambda x: x['confidence'])
+                    logger.debug(f"Selected guaranteed {current_method} with conf={best['confidence']:.2f} from {len(candidates)} candidates")
+                else:
+                    # No guaranteed candidates, select by confidence
+                    best = max(candidates, key=lambda x: x['confidence'])
+                    logger.debug(f"Selected best {current_method} with conf={best['confidence']:.2f} from {len(candidates)} candidates")
             else:
                 best = candidates[0]
 
@@ -1070,6 +1105,7 @@ class TransitionDetector:
         # Mark as strict mode
         for cand in in_zone:
             cand['detection_mode'] = 'strict'
+            cand['guaranteed_shell_line'] = True  # PHASE 7A FIX: Mark as guaranteed
 
         # Sort by confidence (highest first)
         in_zone.sort(key=lambda c: c['confidence'], reverse=True)
@@ -1118,6 +1154,7 @@ class TransitionDetector:
         # Mark as fallback mode
         for cand in relaxed_candidates:
             cand['detection_mode'] = 'fallback'
+            cand['guaranteed_shell_line'] = True  # PHASE 7A FIX: Mark as guaranteed
 
         # Prefer candidates in expected zone
         in_zone = [c for c in relaxed_candidates
@@ -1196,7 +1233,8 @@ class TransitionDetector:
                 'magnitude': nir_d1.iloc[i],
                 'nir_value': nir.iloc[i],
                 'detection_mode': 'best_available',
-                'detection_method': 'derivative_magnitude_any'
+                'detection_method': 'derivative_magnitude_any',
+                'guaranteed_shell_line': True  # PHASE 7A FIX: Mark as guaranteed
             })
 
         if not candidates:
@@ -1249,7 +1287,8 @@ class TransitionDetector:
             'magnitude': 0.0,
             'nir_value': float(nir.iloc[i]),
             'detection_mode': 'last_resort',
-            'detection_method': 'expected_zone_median'
+            'detection_method': 'expected_zone_median',
+            'guaranteed_shell_line': True  # PHASE 7A FIX: Mark as guaranteed
         }
 
     def _detect_with_relaxed_thresholds(
@@ -1452,7 +1491,12 @@ class TransitionDetector:
 
         # Method 2: Detection method fallback (when classes are UNKNOWN)
         # Dry/wet boundaries are shore boundaries by definition
-        if detection_method in ['derivative_magnitude', 'derivative_magnitude_relaxed']:
+        if detection_method in ['derivative_magnitude', 'derivative_magnitude_relaxed',
+                                'derivative_magnitude_any', 'expected_zone_median']:
+            return True
+
+        # PHASE 7A FIX: Guaranteed shell lines are always shore boundaries
+        if transition.get('guaranteed_shell_line', False):
             return True
 
         return False
@@ -1521,6 +1565,14 @@ class TransitionDetector:
         rejected = []  # Track rejections for debug logging
 
         for t in transitions:
+            # PHASE 7A FIX: Always preserve guaranteed shell lines
+            is_guaranteed = t.get('guaranteed_shell_line', False)
+            if is_guaranteed:
+                logger.info(f"Preserving guaranteed shell line at {t.get('distance', 0):.1f}m "
+                           f"in boundary_type filter (type={boundary_types})")
+                filtered.append(t)
+                continue
+
             accepted = False
 
             if boundary_types == 'shore_only':

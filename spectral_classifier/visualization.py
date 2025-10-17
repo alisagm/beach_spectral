@@ -42,6 +42,14 @@ def plot_transect_analysis(
 
     logger.debug(f"Plotting transect {transect_id} with NIR derivative overlay")
 
+    # PHASE 7C: Filter transitions to only show shore boundaries (shell line)
+    if transitions:
+        from .transition import TransitionDetector
+        shore_transitions = [t for t in transitions
+                            if TransitionDetector.is_shore_boundary(t)]
+        logger.debug(f"Filtered {len(transitions)} transitions -> {len(shore_transitions)} shore boundaries for plotting")
+        transitions = shore_transitions
+
     fig, ax = plt.subplots(figsize=figsize)
 
     # Plot background classification regions
@@ -256,9 +264,11 @@ def _plot_transitions_with_annotations(
     """
     Mark transition zones with precise distance annotations.
 
+    PHASE 7C: Simplified to show only shell line boundaries with clean labels.
+
     Args:
         ax: Primary axes
-        transitions: List of transition dictionaries
+        transitions: List of transition dictionaries (should be shore boundaries only)
         data: DataFrame with spectral data
         ax2: Secondary axes (for derivative), optional
     """
@@ -268,12 +278,8 @@ def _plot_transitions_with_annotations(
         dist = transition['distance']
         confidence = transition['confidence']
 
-        # Get boundary type if available
-        boundary_type = transition.get('boundary_type', '')
-        if boundary_type:
-            boundary_label = boundary_type.replace('_to_', '->')
-        else:
-            boundary_label = ''
+        # PHASE 7C: Use simplified "Shell Line" label for shore boundaries
+        boundary_label = 'Shell Line'
 
         # Plot vertical line
         ax.axvline(
@@ -299,10 +305,8 @@ def _plot_transitions_with_annotations(
             zorder=11
         )
 
-        # Add distance annotation with boundary type
-        annotation_text = f'{dist:.1f}m'
-        if boundary_label:
-            annotation_text += f'\n{boundary_label}'
+        # Add distance annotation with simplified label
+        annotation_text = f'{dist:.1f}m\n{boundary_label}'
 
         ax.text(
             dist,

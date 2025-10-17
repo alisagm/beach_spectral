@@ -1,5 +1,0 @@
-threshold_set,nir_drop,brightness_before,nir_before,precision,recall,f1,correct,near,false_neg,false_pos,total,avg_error
-STRICT,40,190,160,0,0.0,0,0,0,10,0,10,
-MODERATE,35,180,145,0,0.0,0,0,0,10,0,10,
-RELAXED,39,183,139,0,0.0,0,0,0,10,0,10,
-EMPIRICAL,43,172,147,0,0.0,0,0,0,10,0,10,

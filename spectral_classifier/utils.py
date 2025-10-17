@@ -253,6 +253,49 @@ def validate_output_directory(output_dir: Path) -> Path:
     return output_dir
 
 
+def get_next_run_directory(seed: int, base_dir: Path = None) -> Path:
+    """
+    Generate the next available run directory for a given seed.
+
+    Args:
+        seed: Random seed number for the run
+        base_dir: Base directory for outputs (defaults to 'data/output')
+
+    Returns:
+        Path object for the next run directory (e.g., data/output/321197_run_001)
+    """
+    if base_dir is None:
+        base_dir = Path('data/output')
+
+    base_dir = Path(base_dir)
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    # Find all existing run directories for this seed
+    existing_runs = list(base_dir.glob(f'{seed}_run_*'))
+
+    if not existing_runs:
+        run_number = 1
+    else:
+        # Extract run numbers from existing directories
+        run_numbers = []
+        for run_dir in existing_runs:
+            try:
+                # Extract number from pattern: <seed>_run_<number>
+                run_num_str = run_dir.name.split('_run_')[-1]
+                run_numbers.append(int(run_num_str))
+            except (ValueError, IndexError):
+                continue
+
+        run_number = max(run_numbers) + 1 if run_numbers else 1
+
+    # Create the new run directory path
+    run_dir = base_dir / f'{seed}_run_{run_number:03d}'
+
+    logger.info(f"Generated run directory: {run_dir}")
+
+    return run_dir
+
+
 def calculate_processing_stats(all_results: List[Dict]) -> Dict:
     """
     Calculate processing statistics across all transects.
