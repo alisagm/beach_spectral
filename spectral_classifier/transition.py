@@ -274,249 +274,13 @@ class TransitionDetector:
         return True, 0.0
 
     # ========================================================================
-    # LEGACY DETECTION METHODS (COMMENTED OUT - Superseded by Phase 2+)
-    # These methods are no longer actively used but preserved for reference.
-    # Current detection uses boundary-type-specific methods:
-    #   - _detect_vegetation_boundaries() for VEG->DRY
-    #   - _detect_surf_zone_boundaries() for WET->WATER
-    #   - _detect_dry_wet_boundaries() for DRY->WET (Phase 6 enhanced)
-    # ========================================================================
-
-    # def _detect_nir_derivative_boundaries(
-    #     self,
-    #     features: pd.DataFrame,
-    #     landcover: pd.DataFrame
-    # ) -> List[Dict]:
-    #     """
-    #     LEGACY: Detect zone boundaries using NIR first derivative as primary signal.
-    #
-    #     Based on boundary analysis:
-    #     - DRY->WET: d(NIR)/dx ~ -4.73 units/m (mean), -26.5 (max)
-    #     - WET->WATER: d(NIR)/dx ~ -3.20 units/m (mean), -52 (max)
-    #
-    #     Strategy:
-    #     1. Find local minima in nir_d1_smooth (sharp negative slopes)
-    #     2. Threshold: nir_d1_smooth < -3.0 units/m
-    #     3. Require NIR value > 50 (avoid noise in deep water)
-    #     4. Minimum separation: 15m between boundaries
-    #
-    #     Returns:
-    #         List of transition dictionaries
-    #     """
-    #     if 'nir_d1_smooth' not in features.columns:
-    #         logger.warning("nir_d1_smooth not found in features, using nir_d1")
-    #         nir_d1 = features.get('nir_d1', features.get('slope', pd.Series([0]*len(features))))
-    #     else:
-    #         nir_d1 = features['nir_d1_smooth']
-    #
-    #     nir = features['nir']
-    #     distance = features['distance']
-    #
-    #     transitions = []
-    #
-    #     # Threshold for significant NIR drop (optimized from validation)
-    #     threshold = self.thresholds.get('nir_derivative_threshold', -4.38)  # units per meter
-    #     min_nir = 50      # Avoid noise in very low NIR regions (deep water)
-    #     min_separation = 15.0  # meters
-    #
-    #     # Find candidate transition points
-    #     candidates = []
-    #
-    #     for i in range(len(nir_d1)):
-    #         # Check if this is a significant negative slope
-    #         if (nir_d1.iloc[i] < threshold and
-    #             nir.iloc[i] > min_nir):
-    #
-    #             # Check if local minimum in derivative (peak negative slope)
-    #             is_local_min = True
-    #             if i > 0 and nir_d1.iloc[i] > nir_d1.iloc[i-1]:
-    #                 is_local_min = False
-    #             if i < len(nir_d1) - 1 and nir_d1.iloc[i] > nir_d1.iloc[i+1]:
-    #                 is_local_min = False
-    #
-    #             if is_local_min:
-    #                 # PHASE 1 IMPROVEMENT: Check sustainability (sustained drop vs transient spike)
-    #                 is_sustained = self._check_sustainability(
-    #                     nir_d1,
-    #                     i,
-    #                     threshold
-    #                 )
-    #
-    #                 if not is_sustained:
-    #                     # Skip transient spikes (major source of false positives in water zones)
-    #                     continue
-    #
-    #                 # PHASE 1 IMPROVEMENT: Check multi-band consensus
-    #                 consensus_reached, num_bands, band_mags = self._check_multi_band_consensus(
-    #                     features,
-    #                     i,
-    #                     threshold
-    #                 )
-    #
-    #                 if not consensus_reached:
-    #                     # Skip single-band artifacts
-    #                     continue
-    #
-    #                 magnitude = abs(nir_d1.iloc[i])
-    #
-    #                 # PHASE 1 IMPROVEMENT: Enhanced confidence based on multiple factors
-    #                 # Base confidence from magnitude
-    #                 confidence = min(0.6 + (magnitude - 4.38) / 10.0, 0.90)
-    #
-    #                 # Boost confidence for multi-band agreement (more bands = higher confidence)
-    #                 if num_bands >= 3:
-    #                     confidence = min(confidence + 0.10, 0.95)
-    #                 elif num_bands >= 4:
-    #                     confidence = min(confidence + 0.15, 0.98)
-    #
-    #                 candidates.append({
-    #                     'index': i,
-    #                     'distance': distance.iloc[i],
-    #                     'type': 'nir_derivative',
-    #                     'confidence': confidence,
-    #                     'magnitude': nir_d1.iloc[i],
-    #                     'nir_value': nir.iloc[i],
-    #                     'is_sustained': is_sustained,
-    #                     'num_bands_agreeing': num_bands,
-    #                     'band_magnitudes': band_mags
-    #                 })
-    #
-    #     # Filter by minimum separation (keep highest magnitude in each cluster)
-    #     if candidates:
-    #         candidates = sorted(candidates, key=lambda x: x['distance'])
-    #
-    #         filtered = []
-    #         last_distance = -999
-    #
-    #         for candidate in candidates:
-    #             if candidate['distance'] - last_distance >= min_separation:
-    #                 filtered.append(candidate)
-    #                 last_distance = candidate['distance']
-    #             else:
-    #                 # Within separation window - keep higher magnitude
-    #                 if abs(candidate['magnitude']) > abs(filtered[-1]['magnitude']):
-    #                     filtered[-1] = candidate
-    #                     last_distance = candidate['distance']
-    #
-    #         transitions = filtered
-    #
-    #     logger.debug(f"Found {len(transitions)} NIR derivative boundaries")
-    #     if transitions:
-    #         logger.debug(f"  Sustainability and multi-band consensus checks applied")
-    #         avg_bands = sum(t.get('num_bands_agreeing', 0) for t in transitions) / len(transitions)
-    #         logger.debug(f"  Average bands agreeing: {avg_bands:.1f}")
-    #
-    #     return transitions
-
-    # def _detect_nir_drop(
-    #     self,
-    #     features: pd.DataFrame,
-    #     window: int
-    # ) -> List[Dict]:
-    #     """LEGACY: Detect sharp NIR decreases."""
-    #     transitions = []
-    #     # Convert to float to prevent unsigned integer overflow
-    #     nir = features['nir'].values.astype(np.float64)
-    #     distances = features['distance'].values
-    #
-    #     for i in range(len(nir) - window):
-    #         # Calculate drop over window
-    #         drop = nir[i] - nir[i + window]
-    #
-    #         if drop > self.thresholds['nir_drop']:
-    #             # Check if monotonic decrease
-    #             is_monotonic = all(
-    #                 nir[i+j] >= nir[i+j+1]
-    #                 for j in range(window-1)
-    #             )
-    #
-    #             if is_monotonic:
-    #                 confidence = min(0.6 + (drop / 50.0), 0.9)
-    #                 transitions.append({
-    #                     'index': i + window // 2,
-    #                     'distance': distances[i + window // 2],
-    #                     'type': 'nir_drop',
-    #                     'confidence': confidence,
-    #                     'magnitude': drop
-    #                 })
-    #
-    #     return transitions
-
-    # def _detect_ndwi_transition(self, features: pd.DataFrame) -> List[Dict]:
-    #     """LEGACY: Detect NDWI transition from negative to positive."""
-    #     transitions = []
-    #     ndwi = features['ndwi'].values
-    #     distances = features['distance'].values
-    #
-    #     for i in range(len(ndwi) - 1):
-    #         # Check for sign change to positive water values
-    #         if (ndwi[i] < 0 and
-    #             ndwi[i+1] > self.thresholds['ndwi_transition']):
-    #
-    #             confidence = 0.6 + min(ndwi[i+1] * 0.5, 0.2)
-    #             transitions.append({
-    #                 'index': i,
-    #                 'distance': distances[i],
-    #                 'type': 'ndwi_transition',
-    #                 'confidence': confidence,
-    #                 'magnitude': ndwi[i+1] - ndwi[i]
-    #             })
-    #
-    #     return transitions
-
-    # def _detect_brightness_drop(self, features: pd.DataFrame) -> List[Dict]:
-    #     """LEGACY: Detect sharp brightness decreases."""
-    #     transitions = []
-    #     # Convert to float to prevent unsigned integer overflow
-    #     brightness = features['brightness'].values.astype(np.float64)
-    #     distances = features['distance'].values
-    #
-    #     window = 3  # Small window for brightness drop
-    #
-    #     for i in range(len(brightness) - window):
-    #         drop = brightness[i] - brightness[i + window]
-    #
-    #         if drop > self.thresholds['brightness_drop']:
-    #             confidence = min(0.5 + (drop / 100.0), 0.85)
-    #             transitions.append({
-    #                 'index': i + window // 2,
-    #                 'distance': distances[i + window // 2],
-    #                 'type': 'brightness_drop',
-    #                 'confidence': confidence,
-    #                 'magnitude': drop
-    #             })
-    #
-    #     return transitions
-
-    # def _detect_spectral_angle_change(
-    #     self,
-    #     features: pd.DataFrame
-    # ) -> List[Dict]:
-    #     """LEGACY: Detect large spectral angle changes."""
-    #     transitions = []
-    #
-    #     if 'spectral_angle' not in features.columns:
-    #         return transitions
-    #
-    #     angles = features['spectral_angle'].values
-    #     distances = features['distance'].values
-    #     threshold = self.thresholds['spectral_angle_threshold']
-    #
-    #     for i in range(len(angles)):
-    #         if angles[i] > threshold:
-    #             confidence = min(0.5 + (angles[i] - threshold) / 60.0, 0.8)
-    #             transitions.append({
-    #                 'index': i,
-    #                 'distance': distances[i],
-    #                 'type': 'spectral_angle',
-    #                 'confidence': confidence,
-    #                 'magnitude': angles[i]
-    #             })
-    #
-    #     return transitions
-
-    # ========================================================================
-    # END LEGACY DETECTION METHODS
+    # LEGACY DETECTION METHODS
+    # Phase 1 detection methods were removed in Phase 8 (2025-10-17).
+    # These were superseded by Phase 2+ boundary-type-specific methods:
+    #   - _detect_vegetation_boundaries() (inflection detection)
+    #   - _detect_surf_zone_boundaries() (RGB foam detection)
+    #   - _detect_dry_wet_boundaries() (derivative magnitude)
+    # Historical code available in git history before Phase 8.
     # ========================================================================
 
     def _add_class_transition_info(
@@ -1219,22 +983,21 @@ class TransitionDetector:
         """
         Select the single best shell line candidate from dry/wet boundary detections.
 
-        PHASE 6C: Implements fallback detection mode with relaxed thresholds.
-        When strict mode finds no candidates, retry with relaxed thresholds
-        to enable detection even on difficult transects with weak signals.
+        PHASE 7A: GUARANTEED DETECTION with progressive fallback strategy.
+        Always returns exactly ONE shell line boundary using:
+        1. STRICT MODE: Phase 6E logic (conf >= 0.75, in expected zone)
+        2. RELAXED MODE: Fallback detection (conf >= 0.50, relaxed thresholds)
+        3. BEST-AVAILABLE MODE: Highest confidence from any derivative minimum
+        4. LAST-RESORT MODE: Expected zone median (95m default)
 
-        Strategy:
-        1. PRIMARY MODE: Try strict filtering with current thresholds
-        2. FALLBACK MODE: If strict mode returns nothing, retry with relaxed thresholds
-        3. Select best candidate by confidence score
-        4. Minimum confidence: 0.50 for fallback, 0.60 for strict
+        This ensures 100% detection rate for Phase 7B boundary correction.
 
         Args:
             candidates: List of dry/wet boundary candidates from strict mode
             features: Feature DataFrame for context
 
         Returns:
-            List with single best candidate (or empty if none acceptable)
+            List with exactly ONE shell line candidate (guaranteed non-empty)
         """
         config = self.thresholds.get('boundary_thresholds', {}).get('dry_wet', {})
         expected_min = config.get('expected_location_min', 40)
@@ -1245,72 +1008,249 @@ class TransitionDetector:
         distance_min = 30.0
         distance_max = 250.0
 
-        # Filter candidates by hard distance bounds FIRST
+        # MODE 1: Try strict mode selection
+        strict_result = self._try_strict_selection(
+            candidates, expected_min, expected_max, distance_min, distance_max
+        )
+        if strict_result:
+            return strict_result
+
+        # MODE 2: Try relaxed mode selection
+        relaxed_result = self._try_relaxed_selection(
+            features, expected_min, expected_max, distance_min, distance_max
+        )
+        if relaxed_result:
+            return relaxed_result
+
+        # MODE 3: Best-available mode (any derivative minimum)
+        best_available = self._find_any_derivative_minimum(
+            features, distance_min, distance_max
+        )
+        if best_available:
+            logger.warning(f"Using best-available mode: shell line at {best_available['distance']:.1f}m "
+                          f"(conf={best_available['confidence']:.2f}, low quality)")
+            return [best_available]
+
+        # MODE 4: Last resort - use expected zone median
+        fallback = self._create_fallback_boundary(features, expected_min, expected_max)
+        logger.warning(f"Using last-resort mode: shell line at {fallback['distance']:.1f}m "
+                      f"(expected zone median, very low quality)")
+        return [fallback]
+
+    def _try_strict_selection(
+        self,
+        candidates: List[Dict],
+        expected_min: float,
+        expected_max: float,
+        distance_min: float,
+        distance_max: float
+    ) -> List[Dict]:
+        """
+        PHASE 7A MODE 1: Try strict mode selection (Phase 6E logic).
+
+        Returns:
+            List with one candidate, or empty list if strict mode fails
+        """
+        # Filter candidates by hard distance bounds
         if candidates:
             candidates = [c for c in candidates
                           if distance_min <= c['distance'] <= distance_max]
             if not candidates:
-                logger.debug(f"No candidates within valid distance bounds ({distance_min}-{distance_max}m)")
+                logger.debug(f"Strict mode: No candidates within distance bounds ({distance_min}-{distance_max}m)")
                 return []
 
         # Check if we have candidates in the expected zone
         in_zone = [c for c in candidates
                    if expected_min <= c['distance'] <= expected_max] if candidates else []
 
-        # PHASE 6C: Trigger fallback if NO candidates OR no candidates in expected zone
         if not in_zone:
-            logger.debug(f"No candidates in expected zone ({expected_min}-{expected_max}m) from strict mode")
-            logger.debug("Attempting fallback detection with relaxed thresholds...")
+            logger.debug(f"Strict mode: No candidates in expected zone ({expected_min}-{expected_max}m)")
+            return []
 
-            relaxed_candidates = self._detect_with_relaxed_thresholds(features)
-
-            if not relaxed_candidates:
-                logger.debug("Fallback mode also found no candidates")
-                # PHASE 6E FIX 1: Removed strict_anywhere fallback to prevent edge artifacts
-                # Previously accepted strict candidates from ANY location, causing 0.0m detections
-                # Now return empty list if no candidates found in expected zone
-                logger.debug("No candidates found with relaxed thresholds, returning empty")
-                return []
-            else:
-                # Mark as fallback mode
-                for cand in relaxed_candidates:
-                    cand['detection_mode'] = 'fallback'
-
-                candidates = relaxed_candidates
-                min_confidence = 0.50  # Lower threshold for fallback mode
-                logger.debug(f"Fallback mode found {len(candidates)} candidates")
-
-                # Re-filter to expected zone with fallback candidates
-                in_zone = [c for c in candidates
-                           if expected_min <= c['distance'] <= expected_max]
-
-                if not in_zone:
-                    logger.debug("No fallback candidates in expected zone either, using best anywhere")
-                    in_zone = candidates
-        else:
-            # Mark as strict mode - we have candidates in zone
-            for cand in candidates:
-                cand['detection_mode'] = 'strict'
-            min_confidence = 0.60  # Standard threshold for strict mode
+        # Mark as strict mode
+        for cand in in_zone:
+            cand['detection_mode'] = 'strict'
 
         # Sort by confidence (highest first)
         in_zone.sort(key=lambda c: c['confidence'], reverse=True)
-
-        # Select best candidate
         best = in_zone[0]
 
+        # Check minimum confidence
+        min_confidence = 0.60
         if best['confidence'] < min_confidence:
-            logger.debug(f"Best candidate confidence too low ({best['confidence']:.2f} < {min_confidence})")
+            logger.debug(f"Strict mode: Best candidate confidence too low ({best['confidence']:.2f} < {min_confidence})")
             return []
 
-        mode_str = best.get('detection_mode', 'unknown')
         logger.info(f"Selected shell line at {best['distance']:.1f}m "
-                   f"(mode={mode_str}, confidence={best['confidence']:.2f}, "
-                   f"rank=1/{len(in_zone)} in zone, "
-                   f"NIR_drop={best.get('nir_drop_abs', 0):.1f}, "
-                   f"var_ratio={best.get('variability_ratio', 0):.2f})")
-
+                   f"(mode=strict, confidence={best['confidence']:.2f}, "
+                   f"rank=1/{len(in_zone)} in zone)")
         return [best]
+
+    def _try_relaxed_selection(
+        self,
+        features: pd.DataFrame,
+        expected_min: float,
+        expected_max: float,
+        distance_min: float,
+        distance_max: float
+    ) -> List[Dict]:
+        """
+        PHASE 7A MODE 2: Try relaxed mode selection (fallback detection).
+
+        Returns:
+            List with one candidate, or empty list if relaxed mode fails
+        """
+        logger.debug("Attempting relaxed mode detection...")
+        relaxed_candidates = self._detect_with_relaxed_thresholds(features)
+
+        if not relaxed_candidates:
+            logger.debug("Relaxed mode: No candidates found")
+            return []
+
+        # Filter by distance bounds
+        relaxed_candidates = [c for c in relaxed_candidates
+                             if distance_min <= c['distance'] <= distance_max]
+
+        if not relaxed_candidates:
+            logger.debug("Relaxed mode: No candidates within distance bounds")
+            return []
+
+        # Mark as fallback mode
+        for cand in relaxed_candidates:
+            cand['detection_mode'] = 'fallback'
+
+        # Prefer candidates in expected zone
+        in_zone = [c for c in relaxed_candidates
+                   if expected_min <= c['distance'] <= expected_max]
+
+        if not in_zone:
+            logger.debug("Relaxed mode: No candidates in expected zone, using best anywhere")
+            in_zone = relaxed_candidates
+
+        # Sort by confidence
+        in_zone.sort(key=lambda c: c['confidence'], reverse=True)
+        best = in_zone[0]
+
+        # Check minimum confidence
+        min_confidence = 0.50
+        if best['confidence'] < min_confidence:
+            logger.debug(f"Relaxed mode: Best candidate confidence too low ({best['confidence']:.2f} < {min_confidence})")
+            return []
+
+        logger.info(f"Selected shell line at {best['distance']:.1f}m "
+                   f"(mode=fallback, confidence={best['confidence']:.2f})")
+        return [best]
+
+    def _find_any_derivative_minimum(
+        self,
+        features: pd.DataFrame,
+        distance_min: float,
+        distance_max: float
+    ) -> Dict:
+        """
+        PHASE 7A MODE 3: Find strongest derivative minimum regardless of context.
+
+        Returns:
+            Single candidate dictionary, or None if no minima found
+        """
+        logger.debug("Attempting best-available mode (any derivative minimum)...")
+
+        nir_d1 = features.get('nir_d1_w5', features.get('nir_d1_smooth'))
+        distance = features['distance']
+        nir = features['nir']
+
+        # Relaxed threshold for this mode
+        threshold = -3.0  # Looser than -8.0
+        min_nir = 30  # Looser than 50
+
+        candidates = []
+
+        for i in range(len(nir_d1)):
+            # Check if this is a negative slope
+            if not (nir_d1.iloc[i] < threshold and nir.iloc[i] > min_nir):
+                continue
+
+            # Check if local minimum
+            is_local_min = True
+            if i > 0 and nir_d1.iloc[i] > nir_d1.iloc[i-1]:
+                is_local_min = False
+            if i < len(nir_d1) - 1 and nir_d1.iloc[i] > nir_d1.iloc[i+1]:
+                is_local_min = False
+
+            if not is_local_min:
+                continue
+
+            dist = distance.iloc[i]
+
+            # Apply hard distance bounds
+            if dist < distance_min or dist > distance_max:
+                continue
+
+            magnitude = abs(nir_d1.iloc[i])
+
+            candidates.append({
+                'index': i,
+                'distance': dist,
+                'type': 'dry_wet_derivative',
+                'confidence': 0.40,  # Low confidence for best-available
+                'magnitude': nir_d1.iloc[i],
+                'nir_value': nir.iloc[i],
+                'detection_mode': 'best_available',
+                'detection_method': 'derivative_magnitude_any'
+            })
+
+        if not candidates:
+            logger.debug("Best-available mode: No derivative minima found")
+            return None
+
+        # Select strongest derivative magnitude
+        best = max(candidates, key=lambda c: abs(c['magnitude']))
+        logger.debug(f"Best-available mode: Found candidate at {best['distance']:.1f}m (magnitude={best['magnitude']:.2f})")
+        return best
+
+    def _create_fallback_boundary(
+        self,
+        features: pd.DataFrame,
+        expected_min: float,
+        expected_max: float
+    ) -> Dict:
+        """
+        PHASE 7A MODE 4: Create last-resort boundary at expected zone median.
+
+        Returns:
+            Single candidate dictionary (always succeeds)
+        """
+        target_distance = (expected_min + expected_max) / 2.0  # 95m for 40-120 range
+        logger.debug(f"Creating last-resort boundary at target {target_distance:.1f}m")
+
+        distance = features['distance']
+        nir = features['nir']
+
+        # Find closest point to target with valid NIR
+        valid_indices = []
+        for i, (dist, nir_val) in enumerate(zip(distance, nir)):
+            if nir_val > 30:  # Minimum NIR threshold
+                valid_indices.append(i)
+
+        if not valid_indices:
+            # Extreme edge case: use midpoint anyway
+            i = len(distance) // 2
+            logger.warning("Last-resort: No valid NIR values, using midpoint")
+        else:
+            # Find closest to target
+            best_i = min(valid_indices, key=lambda i: abs(distance.iloc[i] - target_distance))
+            i = best_i
+
+        return {
+            'index': i,
+            'distance': float(distance.iloc[i]),
+            'type': 'dry_wet_derivative',
+            'confidence': 0.30,  # Very low confidence
+            'magnitude': 0.0,
+            'nir_value': float(nir.iloc[i]),
+            'detection_mode': 'last_resort',
+            'detection_method': 'expected_zone_median'
+        }
 
     def _detect_with_relaxed_thresholds(
         self,

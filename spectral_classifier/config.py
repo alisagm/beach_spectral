@@ -63,8 +63,6 @@ THRESHOLDS = {
     # Kept for backwards compatibility and optional confirmation
     # Empirical: Water=-0.70+-0.11, WetBeach=-0.39+-0.13, DryBeach=-0.08+-0.03, VegDunes=-0.12+-0.05
     'ndvi_water_max': -0.50,            # Very negative for water
-    'ndvi_veg_min': 0.2,                # DEPRECATED - not reliable in this dataset
-    'ndvi_land_max': 0.3,               # DEPRECATED
 
     # Legacy thresholds (deprecated, kept for compatibility)
     'land_brightness_min': 140,
@@ -143,12 +141,21 @@ THRESHOLDS = {
         'dry_wet': 5,              # BEACH_DRY->BEACH_WET (medium, preserve sharpness)
     },
 
-    # Legacy transition detection (deprecated, kept for compatibility)
-    'nir_drop': 20,              # NIR decrease in units
-    'nir_drop_window': 5,        # Number of consecutive points
-    'brightness_drop': 30,       # Brightness decrease in units
-    'spectral_angle_threshold': 30,  # Degrees
-    'ndwi_transition': 0.2,      # NDWI threshold for water
+    # ========================================================================
+    # DEPRECATED PARAMETERS (Removed in Phase 8)
+    # ========================================================================
+    # The following legacy transition detection parameters were removed as they
+    # are no longer used by the Phase 2+ boundary-type-specific detection methods:
+    # - 'nir_drop': 20 (NIR decrease threshold for legacy _detect_nir_drop)
+    # - 'nir_drop_window': 5 (window for legacy NIR drop detection)
+    # - 'brightness_drop': 30 (brightness decrease for legacy _detect_brightness_drop)
+    # - 'spectral_angle_threshold': 30 (degrees, for legacy _detect_spectral_angle_change)
+    # - 'ndwi_transition': 0.2 (NDWI threshold for legacy _detect_ndwi_transition)
+    # - 'ndvi_veg_min': 0.2 (unreliable, NDVI values all negative in dataset)
+    # - 'ndvi_land_max': 0.3 (unreliable, NDVI values all negative in dataset)
+    #
+    # Historical values available in git history before Phase 8.
+    # ========================================================================
 
     # Feature calculation windows
     'window_size': 7,            # Points for statistical features
