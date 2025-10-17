@@ -271,7 +271,7 @@ def _plot_transitions_with_annotations(
         # Get boundary type if available
         boundary_type = transition.get('boundary_type', '')
         if boundary_type:
-            boundary_label = boundary_type.replace('_to_', '→')
+            boundary_label = boundary_type.replace('_to_', '->')
         else:
             boundary_label = ''
 

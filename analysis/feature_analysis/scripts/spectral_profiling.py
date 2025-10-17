@@ -371,7 +371,7 @@ for landcover_class in ['VEGETATED_DUNES', 'BEACH_DRY', 'BEACH_WET', 'WATER']:
         feat_data = class_stats[class_stats['feature'] == feat_name]
         if len(feat_data) > 0:
             row = feat_data.iloc[0]
-            print(f'  {feat_label:20s}: {row["mean"]:7.2f} ± {row["std"]:6.2f}  '
+            print(f'  {feat_label:20s}: {row["mean"]:7.2f} +- {row["std"]:6.2f}  '
                   f'range [{row["min"]:7.2f}, {row["max"]:7.2f}]')
 
 print('\n' + '=' * 80)

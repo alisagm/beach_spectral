@@ -153,7 +153,7 @@ def match_transitions(detected: pd.DataFrame, manual: pd.DataFrame, tolerance_m:
     Returns:
         DataFrame with matched transitions labeled as TP/FP/FN
     """
-    print(f"\nMatching transitions with ±{tolerance_m}m tolerance...")
+    print(f"\nMatching transitions with +-{tolerance_m}m tolerance...")
 
     matched_detections = []
 
@@ -279,7 +279,7 @@ def extract_features_at_transitions(spectral_csv_path: Path, matches_df: pd.Data
     Returns:
         DataFrame with features for each transition
     """
-    print(f"\nExtracting features at transitions (±{window_m}m window)...")
+    print(f"\nExtracting features at transitions (+-{window_m}m window)...")
 
     spectral_data = pd.read_csv(spectral_csv_path)
 
@@ -361,6 +361,10 @@ def compare_tp_vs_fp(features_df: pd.DataFrame, output_dir: Path):
         output_dir: Directory to save outputs
     """
     print("\nComparing TP vs FP feature distributions...")
+
+    if len(features_df) == 0:
+        print("  No features extracted (no detections) - skipping comparison")
+        return
 
     tp_features = features_df[features_df['label'] == 'TP']
     fp_features = features_df[features_df['label'] == 'FP']
@@ -446,7 +450,8 @@ def run_tp_fp_analysis(
     manual_csv_path: Path,
     spectral_csv_path: Path,
     output_dir: Path,
-    tolerance_m: float = 10.0
+    tolerance_m: float = 10.0,
+    boundary_type: str = 'DRY_WET'
 ) -> dict:
     """
     Main function to run complete TP vs FP analysis.
@@ -456,12 +461,14 @@ def run_tp_fp_analysis(
         spectral_csv_path: Path to sampled_spectral_data.csv
         output_dir: Directory to save outputs
         tolerance_m: Matching tolerance in meters
+        boundary_type: Boundary type to filter for (DRY_WET for shell lines)
 
     Returns:
         Dictionary with analysis results
     """
     print("="*80)
     print("TRUE POSITIVE vs FALSE POSITIVE ANALYSIS")
+    print(f"Boundary Type Filter: {boundary_type}")
     print("="*80)
 
     output_dir = Path(output_dir)
@@ -470,8 +477,39 @@ def run_tp_fp_analysis(
     # Step 1: Load manual boundaries
     manual_boundaries = load_manual_boundaries(manual_csv_path)
 
+    # Filter manual boundaries for specified type
+    # Map validation boundary type names to manual CSV format
+    manual_boundary_type_map = {
+        'DRY_WET': 'BEACH_DRY_to_BEACH_WET',
+        'VEG_DRY': 'VEGETATED_DUNES_to_BEACH_DRY',
+        'WET_WATER': 'BEACH_WET_to_WATER'
+    }
+
+    if boundary_type in manual_boundary_type_map:
+        target_boundary = manual_boundary_type_map[boundary_type]
+        n_before = len(manual_boundaries)
+        manual_boundaries = manual_boundaries[manual_boundaries['boundary_type'] == target_boundary].copy()
+        n_after = len(manual_boundaries)
+        print(f"\nFiltered manual boundaries: {n_before} total -> {n_after} {boundary_type} boundaries")
+
     # Step 2: Detect transitions on training data
     detected_transitions = detect_transitions_on_training_data(spectral_csv_path)
+
+    # Filter detected transitions for specified boundary type
+    # Map validation boundary type to detector format (uses different naming convention)
+    detector_boundary_type_map = {
+        'DRY_WET': ['DRY_BEACH->BEACH_WET', 'BEACH_WET->DRY_BEACH'],
+        'VEG_DRY': ['VEG_DUNES->DRY_BEACH', 'DRY_BEACH->VEG_DUNES',
+                    'VEGETATED_DUNES->BEACH_DRY', 'BEACH_DRY->VEGETATED_DUNES'],
+        'WET_WATER': ['BEACH_WET->WATER', 'WATER->BEACH_WET']
+    }
+
+    if boundary_type and len(detected_transitions) > 0:
+        n_before = len(detected_transitions)
+        target_types = detector_boundary_type_map.get(boundary_type, [])
+        detected_transitions = detected_transitions[detected_transitions['boundary_type'].isin(target_types)].copy()
+        n_after = len(detected_transitions)
+        print(f"Filtered detected transitions: {n_before} total -> {n_after} {boundary_type} detections")
 
     # Step 3: Match detected to manual
     matches = match_transitions(detected_transitions, manual_boundaries, tolerance_m)

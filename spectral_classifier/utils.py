@@ -46,7 +46,8 @@ def setup_logging(verbose: bool = True, log_file: Path = None):
 
     # File handler - INFO/DEBUG and above
     if log_file:
-        file_handler = logging.FileHandler(log_file)
+        # Windows compatibility: Use ASCII encoding with error handling
+        file_handler = logging.FileHandler(log_file, encoding='ascii', errors='replace')
         file_handler.setLevel(file_level)
         file_handler.setFormatter(formatter)
         root_logger.addHandler(file_handler)

@@ -266,7 +266,7 @@ if len(shell_line) > 0:
     ax.axvline(shell_line['nir_drop_absolute'].mean(), color='red', linestyle='--', linewidth=2, label='Mean')
     ax.set_xlabel('NIR Drop (units)')
     ax.set_ylabel('Frequency')
-    ax.set_title(f'NIR Drop Distribution\nMean: {shell_line["nir_drop_absolute"].mean():.1f} ± {shell_line["nir_drop_absolute"].std():.1f}')
+    ax.set_title(f'NIR Drop Distribution\nMean: {shell_line["nir_drop_absolute"].mean():.1f} +- {shell_line["nir_drop_absolute"].std():.1f}')
     ax.legend()
     ax.grid(axis='y', alpha=0.3)
 
@@ -276,7 +276,7 @@ if len(shell_line) > 0:
     ax.axvline(shell_line['nir_d1_peak'].mean(), color='darkblue', linestyle='--', linewidth=2, label='Mean')
     ax.set_xlabel('NIR Derivative Peak (units/m)')
     ax.set_ylabel('Frequency')
-    ax.set_title(f'NIR Derivative Peak\nMean: {shell_line["nir_d1_peak"].mean():.1f} ± {shell_line["nir_d1_peak"].std():.1f}')
+    ax.set_title(f'NIR Derivative Peak\nMean: {shell_line["nir_d1_peak"].mean():.1f} +- {shell_line["nir_d1_peak"].std():.1f}')
     ax.legend()
     ax.grid(axis='y', alpha=0.3)
 
@@ -297,7 +297,7 @@ if len(shell_line) > 0:
     ax.axvline(shell_line['transition_width_nir'].mean(), color='darkgreen', linestyle='--', linewidth=2, label='Mean')
     ax.set_xlabel('Transition Width (m)')
     ax.set_ylabel('Frequency')
-    ax.set_title(f'Transition Width (80% change)\nMean: {shell_line["transition_width_nir"].mean():.1f} ± {shell_line["transition_width_nir"].std():.1f} m')
+    ax.set_title(f'Transition Width (80% change)\nMean: {shell_line["transition_width_nir"].mean():.1f} +- {shell_line["transition_width_nir"].std():.1f} m')
     ax.legend()
     ax.grid(axis='y', alpha=0.3)
 
@@ -309,7 +309,7 @@ if len(shell_line) > 0:
                linestyle='--', linewidth=2, label='Mean')
     ax.set_xlabel('Sustained Drop (consecutive points)')
     ax.set_ylabel('Frequency')
-    ax.set_title(f'Sustained Drop Duration\nMean: {shell_line["nir_sustained_drop_points"].mean():.1f} ± {shell_line["nir_sustained_drop_points"].std():.1f}')
+    ax.set_title(f'Sustained Drop Duration\nMean: {shell_line["nir_sustained_drop_points"].mean():.1f} +- {shell_line["nir_sustained_drop_points"].std():.1f}')
     ax.legend()
     ax.grid(axis='y', alpha=0.3)
 
@@ -438,7 +438,7 @@ if len(shell_line) > 0:
 
     # Prepare summary data
     summary_data = []
-    summary_data.append(['Metric', 'Mean ± Std', 'Min', 'Max', 'n'])
+    summary_data.append(['Metric', 'Mean +- Std', 'Min', 'Max', 'n'])
     summary_data.append(['=' * 40, '=' * 20, '=' * 10, '=' * 10, '=' * 5])
 
     metrics_for_table = [
@@ -461,7 +461,7 @@ if len(shell_line) > 0:
         if col in shell_line.columns:
             values = shell_line[col].dropna()
             if len(values) > 0:
-                mean_str = f'{values.mean():.2f} ± {values.std():.2f}'
+                mean_str = f'{values.mean():.2f} +- {values.std():.2f}'
                 min_str = f'{values.min():.2f}'
                 max_str = f'{values.max():.2f}'
                 n_str = f'{len(values)}'

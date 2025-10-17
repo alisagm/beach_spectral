@@ -1,8 +1,8 @@
 """
 Transition Zone Analysis
 
-Analyzes spectral behavior in ±10m regions around landcover boundaries.
-Focus on shell line (BEACH_DRY → BEACH_WET) characteristics.
+Analyzes spectral behavior in +-10m regions around landcover boundaries.
+Focus on shell line (BEACH_DRY -> BEACH_WET) characteristics.
 """
 
 import pandas as pd
@@ -338,7 +338,7 @@ if len(transition_results) > 0:
             if metric_name in trans_data.columns:
                 values = trans_data[metric_name].dropna()
                 if len(values) > 0:
-                    print(f'  {metric_label:30s}: {values.mean():7.2f} ± {values.std():6.2f}  '
+                    print(f'  {metric_label:30s}: {values.mean():7.2f} +- {values.std():6.2f}  '
                           f'range [{values.min():7.2f}, {values.max():7.2f}]')
 
     # === Focus on Shell Line ===
@@ -353,29 +353,29 @@ if len(transition_results) > 0:
         print()
 
         print('NIR Characteristics:')
-        print(f'  Absolute drop:         {shell_line["nir_drop_absolute"].mean():6.1f} ± {shell_line["nir_drop_absolute"].std():5.1f} units')
-        print(f'  Before value:          {shell_line["nir_before_mean"].mean():6.1f} ± {shell_line["nir_before_mean"].std():5.1f} units')
-        print(f'  After value:           {shell_line["nir_after_mean"].mean():6.1f} ± {shell_line["nir_after_mean"].std():5.1f} units')
-        print(f'  Derivative peak:       {shell_line["nir_d1_peak"].mean():6.2f} ± {shell_line["nir_d1_peak"].std():5.2f} units/m')
-        print(f'  Sustained drop:        {shell_line["nir_sustained_drop_points"].mean():6.1f} ± {shell_line["nir_sustained_drop_points"].std():5.1f} points')
+        print(f'  Absolute drop:         {shell_line["nir_drop_absolute"].mean():6.1f} +- {shell_line["nir_drop_absolute"].std():5.1f} units')
+        print(f'  Before value:          {shell_line["nir_before_mean"].mean():6.1f} +- {shell_line["nir_before_mean"].std():5.1f} units')
+        print(f'  After value:           {shell_line["nir_after_mean"].mean():6.1f} +- {shell_line["nir_after_mean"].std():5.1f} units')
+        print(f'  Derivative peak:       {shell_line["nir_d1_peak"].mean():6.2f} +- {shell_line["nir_d1_peak"].std():5.2f} units/m')
+        print(f'  Sustained drop:        {shell_line["nir_sustained_drop_points"].mean():6.1f} +- {shell_line["nir_sustained_drop_points"].std():5.1f} points')
         print()
 
         print('Brightness Characteristics:')
-        print(f'  Absolute drop:         {shell_line["brightness_drop_absolute"].mean():6.1f} ± {shell_line["brightness_drop_absolute"].std():5.1f} units')
-        print(f'  Before value:          {shell_line["brightness_before_mean"].mean():6.1f} ± {shell_line["brightness_before_mean"].std():5.1f} units')
-        print(f'  After value:           {shell_line["brightness_after_mean"].mean():6.1f} ± {shell_line["brightness_after_mean"].std():5.1f} units')
+        print(f'  Absolute drop:         {shell_line["brightness_drop_absolute"].mean():6.1f} +- {shell_line["brightness_drop_absolute"].std():5.1f} units')
+        print(f'  Before value:          {shell_line["brightness_before_mean"].mean():6.1f} +- {shell_line["brightness_before_mean"].std():5.1f} units')
+        print(f'  After value:           {shell_line["brightness_after_mean"].mean():6.1f} +- {shell_line["brightness_after_mean"].std():5.1f} units')
         print()
 
         print('Transition Geometry:')
-        print(f'  Width (80% change):    {shell_line["transition_width_nir"].mean():6.1f} ± {shell_line["transition_width_nir"].std():5.1f} m')
-        print(f'  Asymmetry ratio:       {shell_line["transition_asymmetry"].mean():6.2f} ± {shell_line["transition_asymmetry"].std():5.2f}')
-        print(f'  Band synchrony (std):  {shell_line["band_synchrony_std"].mean():6.2f} ± {shell_line["band_synchrony_std"].std():5.2f} m')
+        print(f'  Width (80% change):    {shell_line["transition_width_nir"].mean():6.1f} +- {shell_line["transition_width_nir"].std():5.1f} m')
+        print(f'  Asymmetry ratio:       {shell_line["transition_asymmetry"].mean():6.2f} +- {shell_line["transition_asymmetry"].std():5.2f}')
+        print(f'  Band synchrony (std):  {shell_line["band_synchrony_std"].mean():6.2f} +- {shell_line["band_synchrony_std"].std():5.2f} m')
         print()
 
         print('Spectral Indices:')
-        print(f'  NIR ratio change:      {shell_line["nir_ratio_change"].mean():6.3f} ± {shell_line["nir_ratio_change"].std():5.3f}')
-        print(f'  R/G ratio at boundary: {shell_line["rg_ratio_at_boundary"].mean():6.3f} ± {shell_line["rg_ratio_at_boundary"].std():5.3f}')
-        print(f'  Variability ratio:     {shell_line["variability_ratio"].mean():6.2f} ± {shell_line["variability_ratio"].std():5.2f}')
+        print(f'  NIR ratio change:      {shell_line["nir_ratio_change"].mean():6.3f} +- {shell_line["nir_ratio_change"].std():5.3f}')
+        print(f'  R/G ratio at boundary: {shell_line["rg_ratio_at_boundary"].mean():6.3f} +- {shell_line["rg_ratio_at_boundary"].std():5.3f}')
+        print(f'  Variability ratio:     {shell_line["variability_ratio"].mean():6.2f} +- {shell_line["variability_ratio"].std():5.2f}')
 
 print('\n' + '=' * 80)
 print('Analysis complete!')

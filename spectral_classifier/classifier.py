@@ -150,7 +150,7 @@ class LandcoverClassifier:
     def _is_water(self, row: pd.Series) -> bool:
         """
         Water is characterized by very low NIR ratio.
-        Empirical: NIR ratio = 0.21 ± 0.10, NDWI = 0.75 ± 0.12
+        Empirical: NIR ratio = 0.21 +- 0.10, NDWI = 0.75 +- 0.12
         """
         nir_ratio = row['nir_ratio']
         ndwi = row['ndwi']
@@ -172,7 +172,7 @@ class LandcoverClassifier:
     def _is_wet_beach(self, row: pd.Series) -> bool:
         """
         Wet beach has intermediate NIR ratio (transitional zone).
-        Empirical: NIR ratio = 0.56 ± 0.13, NDWI = 0.37 ± 0.13
+        Empirical: NIR ratio = 0.56 +- 0.13, NDWI = 0.37 +- 0.13
         """
         nir_ratio = row['nir_ratio']
         ndwi = row['ndwi']
@@ -196,7 +196,7 @@ class LandcoverClassifier:
     def _is_dry_beach(self, row: pd.Series) -> bool:
         """
         Dry beach is very bright, uniform, high NIR ratio.
-        Empirical: Brightness = 209 ± 6, NIR ratio = 0.89 ± 0.04, Variability = 4 ± 2
+        Empirical: Brightness = 209 +- 6, NIR ratio = 0.89 +- 0.04, Variability = 4 +- 2
         """
         nir_ratio = row['nir_ratio']
         brightness = row['brightness']
@@ -219,9 +219,9 @@ class LandcoverClassifier:
     def _is_veg_dunes(self, row: pd.Series) -> bool:
         """
         Vegetated dunes have high variability, high NIR ratio, lower brightness.
-        Empirical: Variability = 28 ± 11, NIR ratio = 0.89 ± 0.08, Brightness = 145 ± 37
+        Empirical: Variability = 28 +- 11, NIR ratio = 0.89 +- 0.08, Brightness = 145 +- 37
 
-        NOTE: NDVI is NOT used as primary criterion (empirical NDVI = -0.12 ± 0.05, negative!)
+        NOTE: NDVI is NOT used as primary criterion (empirical NDVI = -0.12 +- 0.05, negative!)
         """
         nir_ratio = row['nir_ratio']
         brightness = row['brightness']

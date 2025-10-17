@@ -1,13 +1,16 @@
 """
 Master Validation Script
 
-Executes all validation analyses and generates comprehensive validation report.
+Executes validation analyses comparing automated detection to manual labels.
+Supports shell-line specific filtering and multi-seed datasets.
 """
 
 import sys
+import json
 import argparse
 from pathlib import Path
 from datetime import datetime
+import pandas as pd
 
 # Import validation modules
 from validation.trueorfalse import run_tp_fp_analysis, load_manual_boundaries
@@ -15,11 +18,44 @@ from validation.internal import run_internal_analysis
 from validation.addons import run_additional_validations
 
 
+def load_detection_results(test_output_json: Path) -> dict:
+    """
+    Load detection results from training_data.py output.
+
+    Args:
+        test_output_json: Path to training_sample_info.json
+
+    Returns:
+        Dictionary mapping transect_id -> detected_distance
+    """
+    if not test_output_json.exists():
+        print(f"WARNING: Test output not found: {test_output_json}")
+        return {}
+
+    with open(test_output_json, 'r') as f:
+        data = json.load(f)
+
+    detections = {}
+    for sample in data.get('samples', []):
+        transect_id = sample['transect_id']
+        boundary_info = sample.get('boundary_info', {})
+
+        # Extract shell line detection
+        shell_line = boundary_info.get('DRY_WET')
+        if shell_line:
+            detections[transect_id] = shell_line['distance']
+        else:
+            detections[transect_id] = None
+
+    return detections
+
+
 def generate_validation_report(
     tp_fp_results: dict,
     internal_results: dict,
     addon_results: dict,
-    output_dir: Path
+    output_dir: Path,
+    boundary_type: str = 'DRY_WET'
 ):
     """
     Generate comprehensive markdown validation report.
@@ -29,6 +65,7 @@ def generate_validation_report(
         internal_results: Results from within-zone analysis
         addon_results: Results from additional validations
         output_dir: Directory to save report
+        boundary_type: Boundary type being validated (DRY_WET for shell lines)
     """
     print("\nGenerating validation report...")
 
@@ -36,7 +73,8 @@ def generate_validation_report(
 
     with open(report_path, 'w') as f:
         f.write("# Beach Spectral Classifier - Validation Report\n\n")
-        f.write(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        f.write(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"**Boundary Type:** {boundary_type} (Shell Line Detection)\n\n")
         f.write("---\n\n")
 
         # Executive Summary
@@ -58,7 +96,7 @@ def generate_validation_report(
 
         if tp > 0:
             tp_matches = matches[matches['label'] == 'TP']
-            mae = tp_matches['distance_error'].mean()
+            mae = tp_matches['distance_error'].abs().mean()
             rmse = (tp_matches['distance_error']**2).mean()**0.5
 
             f.write(f"**Location Accuracy (True Positives):**\n\n")
@@ -67,8 +105,27 @@ def generate_validation_report(
 
         f.write("---\n\n")
 
-        # Section 1: True Positive vs False Positive Analysis
-        f.write("## 1. True Positive vs False Positive Analysis\n\n")
+        # Section 1: Detection Results Table
+        f.write("## 1. Detection Results\n\n")
+
+        f.write("### Per-Transect Results\n\n")
+        f.write("| Transect | Manual (m) | Detected (m) | Error (m) | Label | Notes |\n")
+        f.write("|----------|-----------|--------------|-----------|-------|-------|\n")
+
+        for _, row in matches.iterrows():
+            transect = row['transect_id']
+            manual = row['manual_position']
+            detected = row['detected_position'] if pd.notna(row['detected_position']) else 'None'
+            error = f"{row['distance_error']:+.1f}" if pd.notna(row['distance_error']) else 'N/A'
+            label = row['label']
+            notes = row.get('notes', '')
+
+            f.write(f"| {transect} | {manual:.1f} | {detected} | {error} | {label} | {notes} |\n")
+
+        f.write("\n")
+
+        # Section 2: True Positive vs False Positive Analysis
+        f.write("## 2. True Positive vs False Positive Analysis\n\n")
 
         f.write("### Classification Summary\n\n")
         f.write(f"| Metric | Count | Percentage |\n")
@@ -93,8 +150,8 @@ def generate_validation_report(
 
         f.write("---\n\n")
 
-        # Section 2: Within-Zone Analysis
-        f.write("## 2. Within-Zone Analysis\n\n")
+        # Section 3: Within-Zone Analysis
+        f.write("## 3. Within-Zone Analysis\n\n")
 
         zone_stats = internal_results['zone_stats']
 
@@ -135,8 +192,8 @@ def generate_validation_report(
 
         f.write("---\n\n")
 
-        # Section 3: Additional Validation Methods
-        f.write("## 3. Additional Validation Methods\n\n")
+        # Section 4: Additional Validation Methods
+        f.write("## 4. Additional Validation Methods\n\n")
 
         # Threshold optimization
         if 'threshold_sensitivity' in addon_results:
@@ -172,14 +229,14 @@ def generate_validation_report(
             within_5m = (errors <= 5).sum() / len(errors) * 100
             within_10m = (errors <= 10).sum() / len(errors) * 100
 
-            f.write(f"- {within_5m:.1f}% of detections within ±5m of manual boundary\n")
-            f.write(f"- {within_10m:.1f}% of detections within ±10m of manual boundary\n")
+            f.write(f"- {within_5m:.1f}% of detections within +-5m of manual boundary\n")
+            f.write(f"- {within_10m:.1f}% of detections within +-10m of manual boundary\n")
             f.write(f"- Mean absolute error: {errors.mean():.2f}m\n\n")
 
         f.write("---\n\n")
 
-        # Section 4: Recommendations
-        f.write("## 4. Recommendations for Algorithm Refinement\n\n")
+        # Section 5: Recommendations
+        f.write("## 5. Recommendations for Algorithm Refinement\n\n")
 
         f.write("Based on validation results, consider the following refinements:\n\n")
 
@@ -200,8 +257,8 @@ def generate_validation_report(
 
         f.write("---\n\n")
 
-        # Section 5: Output Files Reference
-        f.write("## 5. Output Files Reference\n\n")
+        # Section 6: Output Files Reference
+        f.write("## 6. Output Files Reference\n\n")
 
         f.write("All validation outputs are saved in `validation/outputs/`:\n\n")
 
@@ -228,32 +285,44 @@ def generate_validation_report(
 
 
 def run_all_validations(
-    training_dir: Path,
+    manual_csv: Path,
+    spectral_csv: Path,
     output_dir: Path,
-    tolerance_m: float = 10.0
+    tolerance_m: float = 5.0,
+    boundary_type: str = 'DRY_WET',
+    test_output_json: Path = None
 ):
     """
     Execute all validation analyses.
 
     Args:
-        training_dir: Directory containing training data
+        manual_csv: Path to manual classification CSV
+        spectral_csv: Path to spectral data CSV
         output_dir: Directory to save validation outputs
         tolerance_m: Matching tolerance for TP/FP classification
+        boundary_type: Boundary type to validate (DRY_WET for shell lines)
+        test_output_json: Optional path to test output JSON with detection results
     """
     print("="*80)
     print("BEACH SPECTRAL CLASSIFIER - COMPREHENSIVE VALIDATION")
     print("="*80)
-    print(f"\nTraining data: {training_dir}")
+    print(f"\nManual CSV: {manual_csv}")
+    print(f"Spectral CSV: {spectral_csv}")
     print(f"Output directory: {output_dir}")
-    print(f"Matching tolerance: ±{tolerance_m}m")
+    print(f"Matching tolerance: +-{tolerance_m}m")
+    print(f"Boundary type: {boundary_type}")
+    if test_output_json:
+        print(f"Test output JSON: {test_output_json}")
     print("\n" + "="*80)
-
-    # Setup paths
-    manual_csv = training_dir / 'classified_manual.csv'
-    spectral_csv = training_dir / 'sampled_spectral_data.csv'
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Load detection results if provided
+    detection_results = {}
+    if test_output_json and test_output_json.exists():
+        detection_results = load_detection_results(test_output_json)
+        print(f"\nLoaded {len(detection_results)} detection results from test output")
 
     # Validation 1: TP vs FP Analysis
     print("\n\n" + "="*80)
@@ -264,7 +333,8 @@ def run_all_validations(
         manual_csv_path=manual_csv,
         spectral_csv_path=spectral_csv,
         output_dir=output_dir,
-        tolerance_m=tolerance_m
+        tolerance_m=tolerance_m,
+        boundary_type=boundary_type
     )
 
     # Validation 2: Within-Zone Analysis
@@ -300,7 +370,8 @@ def run_all_validations(
         tp_fp_results=tp_fp_results,
         internal_results=internal_results,
         addon_results=addon_results,
-        output_dir=output_dir
+        output_dir=output_dir,
+        boundary_type=boundary_type
     )
 
     print("\n\n" + "="*80)
@@ -324,24 +395,37 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Example usage:
+  # Use default paths (analysis/feature_analysis/data)
   python -m validation.run
 
-  python -m validation.run --training-dir ./training_output --output-dir ./validation/outputs
+  # Specify manual CSV and test output
+  python -m validation.run \\
+    --manual-csv analysis/feature_analysis/data/classified_manual_321197.csv \\
+    --test-output analysis/phase6d_validation/training_sample_info.json
 
-  python -m validation.run --tolerance 5.0
+  # Change tolerance and boundary type
+  python -m validation.run --tolerance 10.0 --boundary-type DRY_WET
         """
     )
 
     # Get default paths
     base_dir = Path(__file__).parent.parent
-    default_training = base_dir / 'training_output'
+    default_manual_csv = base_dir / 'analysis' / 'feature_analysis' / 'data' / 'classified_manual_321197.csv'
+    default_spectral_csv = base_dir / 'analysis' / 'feature_analysis' / 'data' / 'sampled_spectral_data.csv'
     default_output = base_dir / 'validation' / 'outputs'
 
     parser.add_argument(
-        '--training-dir',
+        '--manual-csv',
         type=Path,
-        default=default_training,
-        help=f'Directory containing training data (default: {default_training})'
+        default=default_manual_csv,
+        help=f'Path to manual classification CSV (default: {default_manual_csv})'
+    )
+
+    parser.add_argument(
+        '--spectral-csv',
+        type=Path,
+        default=default_spectral_csv,
+        help=f'Path to spectral data CSV (default: {default_spectral_csv})'
     )
 
     parser.add_argument(
@@ -354,34 +438,57 @@ Example usage:
     parser.add_argument(
         '--tolerance',
         type=float,
-        default=10.0,
-        help='Matching tolerance in meters for TP/FP classification (default: 10.0)'
+        default=5.0,
+        help='Matching tolerance in meters for TP/FP classification (default: 5.0)'
+    )
+
+    parser.add_argument(
+        '--boundary-type',
+        type=str,
+        default='DRY_WET',
+        choices=['DRY_WET', 'VEG_DRY', 'WET_WATER'],
+        help='Boundary type to validate (default: DRY_WET for shell lines)'
+    )
+
+    parser.add_argument(
+        '--test-output',
+        type=Path,
+        default=None,
+        help='Optional path to test output JSON (training_sample_info.json) with detection results'
     )
 
     args = parser.parse_args()
 
     # Validate inputs
-    if not args.training_dir.exists():
-        print(f"ERROR: Training directory not found: {args.training_dir}")
+    if not args.manual_csv.exists():
+        print(f"ERROR: Manual classification CSV not found: {args.manual_csv}")
+        print(f"\nAvailable manual CSV files:")
+        data_dir = base_dir / 'analysis' / 'feature_analysis' / 'data'
+        if data_dir.exists():
+            for csv_file in data_dir.glob('classified_manual_*.csv'):
+                print(f"  - {csv_file}")
         return 1
 
-    manual_csv = args.training_dir / 'classified_manual.csv'
-    spectral_csv = args.training_dir / 'sampled_spectral_data.csv'
-
-    if not manual_csv.exists():
-        print(f"ERROR: Manual classifications not found: {manual_csv}")
-        return 1
-
-    if not spectral_csv.exists():
-        print(f"ERROR: Spectral data not found: {spectral_csv}")
-        return 1
+    if not args.spectral_csv.exists():
+        # Try to infer spectral CSV from manual CSV location
+        manual_dir = args.manual_csv.parent
+        inferred_spectral = manual_dir / 'sampled_spectral_data.csv'
+        if inferred_spectral.exists():
+            args.spectral_csv = inferred_spectral
+            print(f"Using inferred spectral CSV: {args.spectral_csv}")
+        else:
+            print(f"ERROR: Spectral data CSV not found: {args.spectral_csv}")
+            return 1
 
     # Run validations
     try:
         run_all_validations(
-            training_dir=args.training_dir,
+            manual_csv=args.manual_csv,
+            spectral_csv=args.spectral_csv,
             output_dir=args.output_dir,
-            tolerance_m=args.tolerance
+            tolerance_m=args.tolerance,
+            boundary_type=args.boundary_type,
+            test_output_json=args.test_output
         )
 
         return 0

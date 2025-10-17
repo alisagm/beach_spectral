@@ -86,7 +86,7 @@ print(boundaries_df['boundary_type'].value_counts())
 
 # Analyze spectral profiles at boundaries
 def get_profile_at_boundary(spectral_data, transect_id, boundary_pos, window=10):
-    """Extract spectral profile ±window around boundary."""
+    """Extract spectral profile +-window around boundary."""
     transect_data = spectral_data[spectral_data['TransectID'] == transect_id].copy()
     transect_data = transect_data.sort_values('distance')
 
@@ -110,7 +110,7 @@ def calculate_derivatives(data, bands=['red', 'green', 'blue', 'nir']):
 
 # Analyze each boundary type
 print("\n" + "=" * 80)
-print("SPECTRAL ANALYSIS AT BOUNDARIES (±10m window)")
+print("SPECTRAL ANALYSIS AT BOUNDARIES (+-10m window)")
 print("=" * 80)
 
 boundary_stats = []
@@ -151,13 +151,13 @@ for boundary_type in boundaries_df['boundary_type'].unique():
         for band in bands:
             mean_val = before[band].mean()
             std_val = before[band].std()
-            print(f"  {band:6s}: {mean_val:6.1f} ± {std_val:5.1f}")
+            print(f"  {band:6s}: {mean_val:6.1f} +- {std_val:5.1f}")
 
         print("\n--- AFTER boundary (seaward side) ---")
         for band in bands:
             mean_val = after[band].mean()
             std_val = after[band].std()
-            print(f"  {band:6s}: {mean_val:6.1f} ± {std_val:5.1f}")
+            print(f"  {band:6s}: {mean_val:6.1f} +- {std_val:5.1f}")
 
         print("\n--- CHANGE across boundary ---")
         for band in bands:
@@ -266,7 +266,7 @@ for stat in boundary_stats:
     plt.tight_layout()
 
     # Save
-    safe_filename = boundary_type.replace('→', '_to_').replace(' ', '_')
+    safe_filename = boundary_type.replace('->', '_to_').replace(' ', '_')
     output_path = f'boundary_analysis_{safe_filename}.png'
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close()

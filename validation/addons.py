@@ -440,8 +440,8 @@ def error_distribution_analysis(
     cumulative = np.arange(1, len(sorted_errors)+1) / len(sorted_errors)
 
     ax2.plot(sorted_errors, cumulative, linewidth=2)
-    ax2.axvline(5, color='red', linestyle='--', alpha=0.7, label='±5m tolerance')
-    ax2.axvline(10, color='orange', linestyle='--', alpha=0.7, label='±10m tolerance')
+    ax2.axvline(5, color='red', linestyle='--', alpha=0.7, label='+-5m tolerance')
+    ax2.axvline(10, color='orange', linestyle='--', alpha=0.7, label='+-10m tolerance')
     ax2.set_xlabel('Absolute Error (m)', fontsize=12)
     ax2.set_ylabel('Cumulative Probability', fontsize=12)
     ax2.set_title('Cumulative Error Distribution', fontsize=13, fontweight='bold')
@@ -452,7 +452,7 @@ def error_distribution_analysis(
     within_5m = (np.abs(errors) <= 5).sum() / len(errors) * 100
     within_10m = (np.abs(errors) <= 10).sum() / len(errors) * 100
 
-    ax2.text(0.98, 0.02, f'{within_5m:.1f}% within ±5m\n{within_10m:.1f}% within ±10m',
+    ax2.text(0.98, 0.02, f'{within_5m:.1f}% within +-5m\n{within_10m:.1f}% within +-10m',
              transform=ax2.transAxes, fontsize=10, verticalalignment='bottom',
              horizontalalignment='right', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
@@ -462,8 +462,8 @@ def error_distribution_analysis(
     plt.close()
 
     print(f"\nSaved error distribution plot to: {plot_path}")
-    print(f"  {within_5m:.1f}% of detections within ±5m of manual boundary")
-    print(f"  {within_10m:.1f}% of detections within ±10m of manual boundary")
+    print(f"  {within_5m:.1f}% of detections within +-5m of manual boundary")
+    print(f"  {within_10m:.1f}% of detections within +-10m of manual boundary")
 
 
 def run_additional_validations(

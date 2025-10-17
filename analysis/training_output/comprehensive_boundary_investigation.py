@@ -2,7 +2,7 @@
 Comprehensive Boundary Investigation Script
 
 This script performs deep analysis to understand WHY boundaries are being missed,
-particularly VEG_DUNES → BEACH_DRY boundaries (50% of false negatives).
+particularly VEG_DUNES -> BEACH_DRY boundaries (50% of false negatives).
 
 Analysis Components:
 1. Spectral profiles at all boundary types (detected vs missed)
@@ -145,7 +145,7 @@ def apply_smoothing(data, window_size, method='uniform'):
         return data
 
 def get_profile_at_boundary(spectral_data, transect_id, boundary_pos, window=15):
-    """Extract spectral profile ±window around boundary."""
+    """Extract spectral profile +-window around boundary."""
     transect_data = spectral_data[spectral_data['TransectID'] == transect_id].copy()
     transect_data = transect_data.sort_values('distance').reset_index(drop=True)
 
@@ -293,7 +293,7 @@ for boundary_type in boundaries_df['boundary_type'].unique():
     plt.tight_layout(rect=[0, 0, 1, 0.99])
 
     # Save
-    safe_filename = boundary_type.replace('→', '_to_').replace(' ', '_')
+    safe_filename = boundary_type.replace('->', '_to_').replace(' ', '_')
     output_path = output_dir / f'multiscale_{safe_filename}.png'
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close()

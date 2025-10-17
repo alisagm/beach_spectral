@@ -75,7 +75,7 @@ class SpectralFeatures:
         self.data['nir_d2_w7'] = self._compute_nir_derivative_second(window_size=7)
         self.data['nir_d2_w9'] = self._compute_nir_derivative_second(window_size=9)
 
-        # PHASE 2A: RGB foam peak detection (for BEACH_WET→WATER boundaries)
+        # PHASE 2A: RGB foam peak detection (for BEACH_WET->WATER boundaries)
         self.data['has_rgb_foam_peak'] = self._detect_rgb_foam_peaks()
 
         # Statistical features (sliding window)
@@ -123,7 +123,7 @@ class SpectralFeatures:
 
         Expected patterns:
         - VEGETATED_DUNES: Variable, generally R > G (ratio > 1.0)
-        - BEACH_DRY: Generally R ≈ G (ratio ≈ 1.0)
+        - BEACH_DRY: Generally R ~ G (ratio ~ 1.0)
         - BEACH_WET: Generally R > G (ratio > 1.0)
         - WATER: Generally R < G (ratio < 1.0), except wave crests
 
@@ -476,9 +476,9 @@ class SpectralFeatures:
         Compute NIR derivatives at multiple smoothing scales.
 
         Different boundary types require different smoothing levels:
-        - VEG_DUNES→BEACH_DRY: window 7-9 (coarse, smooth vegetation noise)
-        - BEACH_WET→WATER: window 7-11 (coarse, for foam detection)
-        - BEACH_DRY→BEACH_WET: window 5-9 (medium, preserve sharpness)
+        - VEG_DUNES->BEACH_DRY: window 7-9 (coarse, smooth vegetation noise)
+        - BEACH_WET->WATER: window 7-11 (coarse, for foam detection)
+        - BEACH_DRY->BEACH_WET: window 5-9 (medium, preserve sharpness)
 
         Returns:
             Dictionary mapping feature names to derivative series
@@ -505,11 +505,11 @@ class SpectralFeatures:
         """
         Second derivative of NIR (curvature/inflection detection).
 
-        Critical for VEG_DUNES→BEACH_DRY boundaries which show inflection points,
+        Critical for VEG_DUNES->BEACH_DRY boundaries which show inflection points,
         not simple first derivative drops.
 
         Visual signature of VEG_DUNES boundary:
-        - Steep increase → steep drop → **inflection at 0** → increase → shallow
+        - Steep increase -> steep drop -> **inflection at 0** -> increase -> shallow
 
         Args:
             window_size: Smoothing window for first derivative (default 7)
@@ -539,7 +539,7 @@ class SpectralFeatures:
         """
         Detect RGB peaks indicating foam from breaking surf.
 
-        Critical for BEACH_WET→WATER boundaries which often have:
+        Critical for BEACH_WET->WATER boundaries which often have:
         - Small RGB bump from white foam at breaking surf
         - Gradual NIR transition (not always a sharp drop)
 

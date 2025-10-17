@@ -32,9 +32,9 @@ class TransitionDetector:
         Identify zone boundary transitions using boundary-type-specific detection methods.
 
         PHASE 2 APPROACH: Different boundary types have different spectral signatures:
-        1. VEG_DUNES→BEACH_DRY: Inflection point detection (second derivative)
-        2. BEACH_WET→WATER: RGB foam peak detection
-        3. BEACH_DRY→BEACH_WET: Derivative magnitude (current method, works well)
+        1. VEG_DUNES->BEACH_DRY: Inflection point detection (second derivative)
+        2. BEACH_WET->WATER: RGB foam peak detection
+        3. BEACH_DRY->BEACH_WET: Derivative magnitude (current method, works well)
 
         Strategy:
         1. Run all three specialized detectors in parallel
@@ -244,7 +244,7 @@ class TransitionDetector:
 
         # Define expected patterns by boundary type
         if boundary_type == 'dry_wet':
-            # BEACH_DRY→BEACH_WET: R ≈ G (ratio near 1.0)
+            # BEACH_DRY->BEACH_WET: R ~ G (ratio near 1.0)
             expected_min, expected_max = 0.95, 1.15
             if expected_min <= rg_ratio <= expected_max:
                 # Perfect match - boost confidence
@@ -258,12 +258,12 @@ class TransitionDetector:
                 return False, 0.0
 
         elif boundary_type == 'veg':
-            # VEG_DUNES→BEACH_DRY: Variable R>G typical, but wide range acceptable
+            # VEG_DUNES->BEACH_DRY: Variable R>G typical, but wide range acceptable
             # Don't enforce strict pattern (too variable)
             return True, 0.0
 
         elif boundary_type == 'surf':
-            # BEACH_WET→WATER: R>G transitioning to R<G
+            # BEACH_WET->WATER: R>G transitioning to R<G
             # Look for decreasing R/G trend if derivative available
             if 'rg_ratio_d1_smooth' in features.columns:
                 rg_deriv = features['rg_ratio_d1_smooth'].iloc[index]
@@ -277,9 +277,9 @@ class TransitionDetector:
     # LEGACY DETECTION METHODS (COMMENTED OUT - Superseded by Phase 2+)
     # These methods are no longer actively used but preserved for reference.
     # Current detection uses boundary-type-specific methods:
-    #   - _detect_vegetation_boundaries() for VEG→DRY
-    #   - _detect_surf_zone_boundaries() for WET→WATER
-    #   - _detect_dry_wet_boundaries() for DRY→WET (Phase 6 enhanced)
+    #   - _detect_vegetation_boundaries() for VEG->DRY
+    #   - _detect_surf_zone_boundaries() for WET->WATER
+    #   - _detect_dry_wet_boundaries() for DRY->WET (Phase 6 enhanced)
     # ========================================================================
 
     # def _detect_nir_derivative_boundaries(
@@ -291,8 +291,8 @@ class TransitionDetector:
     #     LEGACY: Detect zone boundaries using NIR first derivative as primary signal.
     #
     #     Based on boundary analysis:
-    #     - DRY→WET: d(NIR)/dx ≈ -4.73 units/m (mean), -26.5 (max)
-    #     - WET→WATER: d(NIR)/dx ≈ -3.20 units/m (mean), -52 (max)
+    #     - DRY->WET: d(NIR)/dx ~ -4.73 units/m (mean), -26.5 (max)
+    #     - WET->WATER: d(NIR)/dx ~ -3.20 units/m (mean), -52 (max)
     #
     #     Strategy:
     #     1. Find local minima in nir_d1_smooth (sharp negative slopes)
@@ -560,7 +560,7 @@ class TransitionDetector:
 
                 transition['from_class'] = from_class
                 transition['to_class'] = to_class
-                transition['boundary_type'] = f"{from_class}→{to_class}"
+                transition['boundary_type'] = f"{from_class}->{to_class}"
 
                 # Boost confidence if it's a major boundary
                 if self._is_beach_water_transition(from_class, to_class):
@@ -668,11 +668,11 @@ class TransitionDetector:
             # Reject transitions within the same zone (not real boundaries)
             if from_class == to_class and from_class != 'UNKNOWN':
                 logger.debug(f"Rejecting within-zone transition at {transition['distance']:.1f}m "
-                           f"({from_class}→{to_class})")
+                           f"({from_class}->{to_class})")
                 continue
 
             # PHASE 4 ENHANCEMENT: Stricter filtering for dry beach zone
-            # Check if this is a DRY_BEACH→DRY_BEACH transition by examining spectral variability
+            # Check if this is a DRY_BEACH->DRY_BEACH transition by examining spectral variability
             if from_class == 'DRY_BEACH' and to_class == 'DRY_BEACH':
                 # Check spectral variability in vicinity
                 idx = transition['index']
@@ -688,11 +688,11 @@ class TransitionDetector:
 
                     if nir_std < min_variability:
                         # Low variability = not a real boundary
-                        logger.debug(f"Rejecting low-variability DRY→DRY at {transition['distance']:.1f}m "
+                        logger.debug(f"Rejecting low-variability DRY->DRY at {transition['distance']:.1f}m "
                                    f"(NIR std={nir_std:.1f})")
                         continue
 
-            # Also reject UNKNOWN→UNKNOWN (edge artifacts)
+            # Also reject UNKNOWN->UNKNOWN (edge artifacts)
             if from_class == 'UNKNOWN' and to_class == 'UNKNOWN':
                 continue
 
@@ -750,11 +750,11 @@ class TransitionDetector:
         landcover: pd.DataFrame
     ) -> List[Dict]:
         """
-        Detect VEG_DUNES→BEACH_DRY boundaries using inflection point detection.
+        Detect VEG_DUNES->BEACH_DRY boundaries using inflection point detection.
 
         Visual signature: Curvature change (second derivative zero-crossing)
         Optimal smoothing: window 7-9
-        Pattern: steep increase → steep drop → **inflection at 0** → increase → shallow
+        Pattern: steep increase -> steep drop -> **inflection at 0** -> increase -> shallow
 
         Key insight: These boundaries are NOT characterized by first derivative drops,
         but by INFLECTION POINTS where the curvature changes sign.
@@ -775,9 +775,9 @@ class TransitionDetector:
 
         # Configuration from THRESHOLDS (PHASE 2 FIX: stricter thresholds)
         veg_config = self.thresholds.get('boundary_thresholds', {}).get('veg_boundaries', {})
-        threshold = veg_config.get('second_deriv_threshold', 1.0)  # PHASE 2 FIX: 0.5 → 1.0
+        threshold = veg_config.get('second_deriv_threshold', 1.0)  # PHASE 2 FIX: 0.5 -> 1.0
         trend_window = veg_config.get('trend_change_window', 10)
-        min_nir_change = veg_config.get('min_nir_change', 20)     # PHASE 2 FIX: 10 → 20
+        min_nir_change = veg_config.get('min_nir_change', 20)     # PHASE 2 FIX: 10 -> 20
 
         # Find zero-crossings (inflection points)
         for i in range(1, len(nir_d2) - 1):
@@ -788,7 +788,7 @@ class TransitionDetector:
 
                 if curvature_change > threshold:
                     # Verify trend pattern: check if we have the expected
-                    # increase → decrease → increase pattern
+                    # increase -> decrease -> increase pattern
                     window_start = max(0, i - trend_window)
                     window_end = min(len(nir), i + trend_window)
 
@@ -800,7 +800,7 @@ class TransitionDetector:
                     nir_after = nir.iloc[i:window_end].mean()
 
                     # VEG_DUNES typically has higher NIR than BEACH_DRY initially, then drops
-                    # PHASE 2 FIX: Require larger NIR difference (10 → 20 units)
+                    # PHASE 2 FIX: Require larger NIR difference (10 -> 20 units)
                     if nir_before > nir_after + min_nir_change:
                         # Calculate confidence based on curvature change magnitude
                         # PHASE 2 FIX: More conservative confidence scaling
@@ -837,7 +837,7 @@ class TransitionDetector:
         landcover: pd.DataFrame
     ) -> List[Dict]:
         """
-        Detect BEACH_WET→WATER boundaries using RGB foam detection.
+        Detect BEACH_WET->WATER boundaries using RGB foam detection.
 
         Visual signature: Small RGB bump from breaking surf
         Optimal smoothing: window 7-11
@@ -919,7 +919,7 @@ class TransitionDetector:
         landcover: pd.DataFrame
     ) -> List[Dict]:
         """
-        Detect BEACH_DRY→BEACH_WET boundaries using derivative magnitude.
+        Detect BEACH_DRY->BEACH_WET boundaries using derivative magnitude.
 
         Visual signature: Slope steepening
         Optimal smoothing: window 5-9
@@ -961,9 +961,6 @@ class TransitionDetector:
 
         # Find candidate transition points
         for i in range(len(nir_d1)):
-            # PHASE 6: Track rejection reasons for enhanced logging
-            rejection_reasons = []
-
             # Check if this is a significant negative slope
             if not (nir_d1.iloc[i] < threshold and nir.iloc[i] > min_nir):
                 continue
@@ -978,44 +975,27 @@ class TransitionDetector:
             if not is_local_min:
                 continue
 
-            # PHASE 6: Context Validation - Absolute NIR drop magnitude
+            # PHASE 6D: Context Validation - SOFT PENALTIES (not hard rejections)
+            # Compute context features for confidence scoring
             nir_drop_abs = 0.0
             if i >= 5:
                 nir_before = nir.iloc[i-5:i].mean()
                 nir_at = nir.iloc[i]
                 nir_drop_abs = nir_before - nir_at
 
-                if nir_drop_abs < min_nir_drop_abs:
-                    rejection_reasons.append(f"NIR_drop={nir_drop_abs:.1f}<{min_nir_drop_abs}")
-
-            # PHASE 6: Context Validation - Brightness before boundary
             brightness_before = 0.0
             if i >= 5 and 'brightness' in features.columns:
                 brightness_before = features['brightness'].iloc[i-5:i].mean()
-                if brightness_before < brightness_min:
-                    rejection_reasons.append(f"brightness={brightness_before:.1f}<{brightness_min}")
 
-            # PHASE 6: Context Validation - NIR before boundary
             nir_mean_before = 0.0
             if i >= 5:
                 nir_mean_before = nir.iloc[i-5:i].mean()
-                if nir_mean_before < nir_before_min:
-                    rejection_reasons.append(f"NIR_before={nir_mean_before:.1f}<{nir_before_min}")
 
-            # PHASE 6: Context Validation - Variability ratio (smooth → rough)
             var_ratio = 0.0
             if i >= 5 and i < len(features) - 5 and 'variability' in features.columns:
                 var_before = features['variability'].iloc[i-5:i].mean()
                 var_after = features['variability'].iloc[i:i+5].mean()
                 var_ratio = var_after / (var_before + 1e-6)  # Avoid divide by zero
-
-                if var_ratio < var_ratio_min:
-                    rejection_reasons.append(f"var_ratio={var_ratio:.2f}<{var_ratio_min}")
-
-            # PHASE 6: Log rejections with reasons
-            if rejection_reasons:
-                logger.debug(f"  Rejected at {distance.iloc[i]:.1f}m: {', '.join(rejection_reasons)}")
-                continue
 
             magnitude = abs(nir_d1.iloc[i])
 
@@ -1063,7 +1043,7 @@ class TransitionDetector:
                 if num_bands >= 3:
                     confidence += 0.08
 
-            # Bonus 7: R/G ratio near 1.0 (empirical: 1.02±0.04)
+            # Bonus 7: R/G ratio near 1.0 (empirical: 1.02+-0.04)
             use_rg_ratio = config.get('use_rg_ratio', True)
             if use_rg_ratio:
                 is_valid, conf_adjustment = self._validate_rg_pattern_for_boundary_type(
@@ -1081,19 +1061,53 @@ class TransitionDetector:
             if in_expected_zone:
                 confidence += 0.05
 
-            # PHASE 6C: VEG→DRY discrimination - Apply penalty for candidates in VEG zone
-            # VEG→DRY boundaries typically occur at 40-70m, shell lines at 90-120m
+            # PHASE 6C: VEG->DRY discrimination - Apply penalty for candidates in VEG zone
+            # VEG->DRY boundaries typically occur at 40-70m, shell lines at 90-120m
             veg_zone_min = config.get('expected_location_veg_dry_min', 40)
             veg_zone_max = config.get('expected_location_veg_dry_max', 70)
 
             if veg_zone_min <= dist <= veg_zone_max:
-                # Candidate is in typical VEG→DRY zone
+                # Candidate is in typical VEG->DRY zone
+                # PHASE 6E FIX 2: Hard rejection for low var_ratio in VEG zone
+                # VEG->DRY boundaries have low spectral variability, shell lines have high variability
+                if var_ratio < 1.0:
+                    logger.debug(f"  REJECTED at {dist:.1f}m: VEG zone with low var_ratio ({var_ratio:.2f})")
+                    continue  # Hard rejection
+
                 # Apply penalty unless it has very strong shell line signature
                 if nir_drop_abs < 50:  # Shell lines typically >50 units
                     confidence -= 0.20  # Heavy penalty
                     logger.debug(f"  Penalty at {dist:.1f}m: likely VEG->DRY boundary (in zone {veg_zone_min}-{veg_zone_max}m, NIR_drop={nir_drop_abs:.1f})")
 
+            # PHASE 6D: SOFT PENALTIES for weak context features
+            # Instead of hard rejection, apply graduated penalties based on how far below thresholds
+
+            # Penalty 1: Weak NIR drop (target: 39+, empirical: 55)
+            if nir_drop_abs < min_nir_drop_abs:
+                penalty = (min_nir_drop_abs - nir_drop_abs) / min_nir_drop_abs  # 0.0-1.0 scale
+                confidence -= 0.15 * penalty  # Up to -0.15 for very weak drops
+                logger.debug(f"  Soft penalty: NIR_drop={nir_drop_abs:.1f} < {min_nir_drop_abs} (penalty={0.15*penalty:.2f})")
+
+            # Penalty 2: Low brightness before (target: 175+, empirical: 202)
+            if brightness_before > 0 and brightness_before < brightness_min:
+                penalty = (brightness_min - brightness_before) / brightness_min
+                confidence -= 0.10 * penalty  # Up to -0.10 for very dark sand
+                logger.debug(f"  Soft penalty: brightness={brightness_before:.1f} < {brightness_min} (penalty={0.10*penalty:.2f})")
+
+            # Penalty 3: Low NIR before (target: 135+, empirical: 172)
+            if nir_mean_before > 0 and nir_mean_before < nir_before_min:
+                penalty = (nir_before_min - nir_mean_before) / nir_before_min
+                confidence -= 0.10 * penalty  # Up to -0.10 for low NIR
+                logger.debug(f"  Soft penalty: NIR_before={nir_mean_before:.1f} < {nir_before_min} (penalty={0.10*penalty:.2f})")
+
+            # Penalty 4: Low variability ratio (target: 1.5+, empirical: 5.9)
+            if var_ratio > 0 and var_ratio < var_ratio_min:
+                penalty = (var_ratio_min - var_ratio) / var_ratio_min
+                confidence -= 0.08 * penalty  # Up to -0.08 for smooth transitions
+                logger.debug(f"  Soft penalty: var_ratio={var_ratio:.2f} < {var_ratio_min} (penalty={0.08*penalty:.2f})")
+
             confidence = min(confidence, 0.95)  # Cap at 0.95
+            confidence = max(confidence, 0.30)  # Floor at 0.30 (very weak candidates)
 
             # PHASE 6: Enhanced logging for accepted candidates
             logger.debug(f"  Candidate at {distance.iloc[i]:.1f}m: "
@@ -1226,6 +1240,19 @@ class TransitionDetector:
         expected_min = config.get('expected_location_min', 40)
         expected_max = config.get('expected_location_max', 120)
 
+        # PHASE 6E FIX 4: Hard distance bounds to prevent extreme edge artifacts
+        # Shell lines cannot occur within 30m of start or beyond 250m (deep water)
+        distance_min = 30.0
+        distance_max = 250.0
+
+        # Filter candidates by hard distance bounds FIRST
+        if candidates:
+            candidates = [c for c in candidates
+                          if distance_min <= c['distance'] <= distance_max]
+            if not candidates:
+                logger.debug(f"No candidates within valid distance bounds ({distance_min}-{distance_max}m)")
+                return []
+
         # Check if we have candidates in the expected zone
         in_zone = [c for c in candidates
                    if expected_min <= c['distance'] <= expected_max] if candidates else []
@@ -1239,15 +1266,11 @@ class TransitionDetector:
 
             if not relaxed_candidates:
                 logger.debug("Fallback mode also found no candidates")
-                # Last resort: use strict candidates from anywhere if available
-                if candidates:
-                    logger.debug(f"Using strict candidates from outside zone as last resort ({len(candidates)} total)")
-                    in_zone = candidates
-                    min_confidence = 0.60
-                    for cand in candidates:
-                        cand['detection_mode'] = 'strict_anywhere'
-                else:
-                    return []
+                # PHASE 6E FIX 1: Removed strict_anywhere fallback to prevent edge artifacts
+                # Previously accepted strict candidates from ANY location, causing 0.0m detections
+                # Now return empty list if no candidates found in expected zone
+                logger.debug("No candidates found with relaxed thresholds, returning empty")
+                return []
             else:
                 # Mark as fallback mode
                 for cand in relaxed_candidates:
@@ -1300,10 +1323,10 @@ class TransitionDetector:
         have weak spectral signatures that don't meet strict Phase 6 criteria.
 
         Relaxation strategy:
-        - NIR drop absolute: 39 → 15 (allow much weaker drops)
-        - Brightness before: 175 → 160 (allow darker sand)
-        - NIR before: 135 → 100 (allow much lower NIR values)
-        - Variability ratio: 1.5 → 1.0 (allow smoother transitions)
+        - NIR drop absolute: 39 -> 15 (allow much weaker drops)
+        - Brightness before: 175 -> 160 (allow darker sand)
+        - NIR before: 135 -> 100 (allow much lower NIR values)
+        - Variability ratio: 1.5 -> 1.0 (allow smoother transitions)
 
         Args:
             features: Feature DataFrame with spectral features
@@ -1324,23 +1347,28 @@ class TransitionDetector:
         config = self.thresholds.get('boundary_thresholds', {}).get('dry_wet', {})
         threshold = config.get('nir_threshold', -8.0)
 
-        # PHASE 6C FALLBACK: Dramatically relaxed thresholds
-        min_nir_drop_abs = 15.0  # Was 39, now 15 (60% reduction)
+        # PHASE 6D FALLBACK: Relaxed thresholds with hard minimums to prevent edge artifacts
+        min_nir_drop_abs = 20.0  # Was 39, now 20 (PHASE 6D: increased from 15 to prevent edge artifacts)
         brightness_min = 160  # Was 175, now 160
         nir_before_min = 100  # Was 135, now 100 (26% reduction)
-        var_ratio_min = 1.0  # Was 1.5, now 1.0
+        var_ratio_min = 1.2  # Was 1.5, now 1.2 (PHASE 6D: increased from 1.0 to prevent edge artifacts)
+
+        # PHASE 6D: Distance bounds to prevent edge artifacts (0.0m detections)
+        distance_min = 30.0  # No shell lines within 30m of transect start
+        distance_max = 250.0  # No shell lines beyond 250m (deep water)
 
         expected_loc_min = config.get('expected_location_min', 40)
         expected_loc_max = config.get('expected_location_max', 120)
         min_nir = 50
 
-        # PHASE 6C: Debug logging for fallback mode config
+        # PHASE 6D: Debug logging for fallback mode config
         logger.debug(f"Fallback detection config: NIR_drop_min={min_nir_drop_abs}, "
                     f"brightness_min={brightness_min}, NIR_before_min={nir_before_min}, "
-                    f"var_ratio_min={var_ratio_min}, expected_zone={expected_loc_min}-{expected_loc_max}m")
+                    f"var_ratio_min={var_ratio_min}, distance_bounds={distance_min}-{distance_max}m, "
+                    f"expected_zone={expected_loc_min}-{expected_loc_max}m")
         logger.debug(f"  Fallback thresholds: NIR_drop>={min_nir_drop_abs}, "
                     f"brightness>={brightness_min}, NIR_before>={nir_before_min}, "
-                    f"var_ratio>={var_ratio_min}")
+                    f"var_ratio>={var_ratio_min}, dist={distance_min}-{distance_max}m")
 
         # Find candidate transition points with relaxed criteria
         for i in range(len(nir_d1)):
@@ -1405,8 +1433,13 @@ class TransitionDetector:
             if var_ratio > 3.0:
                 confidence += 0.05
 
-            # Location bonus
+            # PHASE 6D: Hard constraint - distance bounds to prevent edge artifacts
             dist = distance.iloc[i]
+            if dist < distance_min or dist > distance_max:
+                logger.debug(f"  Rejected at {dist:.1f}m: outside valid distance bounds ({distance_min}-{distance_max}m)")
+                continue
+
+            # Location bonus
             in_expected_zone = expected_loc_min <= dist <= expected_loc_max
             if in_expected_zone:
                 confidence += 0.05
@@ -1454,7 +1487,7 @@ class TransitionDetector:
     @staticmethod
     def is_shore_boundary(transition: Dict) -> bool:
         """
-        Check if transition represents a shore boundary (BEACH_DRY→BEACH_WET).
+        Check if transition represents a shore boundary (BEACH_DRY->BEACH_WET).
 
         This is the swash line or shell line - the wet/dry sand boundary.
         Most geomorphologically important boundary for beach analysis.
@@ -1487,7 +1520,7 @@ class TransitionDetector:
     @staticmethod
     def is_water_boundary(transition: Dict) -> bool:
         """
-        Check if transition represents a water boundary (BEACH_WET→WATER).
+        Check if transition represents a water boundary (BEACH_WET->WATER).
 
         This is the waterline - the boundary between wet sand and open water.
 
@@ -1500,7 +1533,7 @@ class TransitionDetector:
         from_class = transition.get('from_class', 'UNKNOWN')
         to_class = transition.get('to_class', 'UNKNOWN')
 
-        # Water boundary: BEACH_WET → WATER
+        # Water boundary: BEACH_WET -> WATER
         water_classes = ['WATER', 'WAVE_CRESTS']
         return (from_class == 'BEACH_WET' and to_class in water_classes) or \
                (to_class == 'BEACH_WET' and from_class in water_classes)
@@ -1508,7 +1541,7 @@ class TransitionDetector:
     @staticmethod
     def is_vegetation_boundary(transition: Dict) -> bool:
         """
-        Check if transition represents a vegetation boundary (VEG_DUNES→BEACH_DRY).
+        Check if transition represents a vegetation boundary (VEG_DUNES->BEACH_DRY).
 
         This is the vegetation/dune to bare sand boundary.
 
@@ -1521,7 +1554,7 @@ class TransitionDetector:
         from_class = transition.get('from_class', 'UNKNOWN')
         to_class = transition.get('to_class', 'UNKNOWN')
 
-        # Vegetation boundary: VEG_DUNES → DRY_BEACH or BEACH_WET
+        # Vegetation boundary: VEG_DUNES -> DRY_BEACH or BEACH_WET
         beach_classes = ['DRY_BEACH', 'BEACH_WET']
         return (from_class == 'VEG_DUNES' and to_class in beach_classes) or \
                (to_class == 'VEG_DUNES' and from_class in beach_classes)
@@ -1551,7 +1584,7 @@ class TransitionDetector:
             accepted = False
 
             if boundary_types == 'shore_only':
-                # Only shore boundaries (BEACH_DRY→BEACH_WET)
+                # Only shore boundaries (BEACH_DRY->BEACH_WET)
                 if TransitionDetector.is_shore_boundary(t):
                     filtered.append(t)
                     accepted = True
@@ -1575,7 +1608,7 @@ class TransitionDetector:
                 to_class = t.get('to_class', 'UNKNOWN')
                 method = t.get('detection_method', 'unknown')
                 dist = t.get('distance', 0)
-                logger.debug(f"  - {dist:.1f}m: {from_class}→{to_class} (method={method})")
+                logger.debug(f"  - {dist:.1f}m: {from_class}->{to_class} (method={method})")
 
         logger.info(f"Filtered {len(transitions)} -> {len(filtered)} transitions "
                    f"(boundary_types={boundary_types})")

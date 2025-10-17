@@ -97,8 +97,8 @@ for zone_class, start, end in transect_zones:
         print(f'    Warning: No statistics for {zone_class}')
         continue
 
-    print(f'    NIR: {nir_mean:.1f} ± {nir_std:.1f}')
-    print(f'    Brightness: {bright_mean:.1f} ± {bright_std:.1f}')
+    print(f'    NIR: {nir_mean:.1f} +- {nir_std:.1f}')
+    print(f'    Brightness: {bright_mean:.1f} +- {bright_std:.1f}')
 
     # Generate points for this zone (1m sampling)
     zone_distances = np.arange(start, end, 1.0)

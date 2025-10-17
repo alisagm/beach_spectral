@@ -57,9 +57,9 @@ def generate_training_sample(
         seed: Random seed for reproducibility
         verbose: Enable verbose logging
         boundary_types: Which boundary types to detect
-            - 'shore_only': BEACH_DRY→BEACH_WET only (default)
-            - 'waterline': Shore + BEACH_WET→WATER boundaries
-            - 'all': All boundaries including VEG_DUNES→BEACH_DRY
+            - 'shore_only': BEACH_DRY->BEACH_WET only (default)
+            - 'waterline': Shore + BEACH_WET->WATER boundaries
+            - 'all': All boundaries including VEG_DUNES->BEACH_DRY
 
     Returns:
         Dictionary with sampling metadata and results
@@ -261,9 +261,9 @@ def process_transect_for_training(
         raster_index: RasterIndex object
         direction: Transect direction
         boundary_types: Which boundary types to detect
-            - 'shore_only': BEACH_DRY→BEACH_WET only (default)
-            - 'waterline': Shore + BEACH_WET→WATER boundaries
-            - 'all': All boundaries including VEG_DUNES→BEACH_DRY
+            - 'shore_only': BEACH_DRY->BEACH_WET only (default)
+            - 'waterline': Shore + BEACH_WET->WATER boundaries
+            - 'all': All boundaries including VEG_DUNES->BEACH_DRY
 
     Returns:
         Dictionary with analysis results
@@ -297,8 +297,13 @@ def process_transect_for_training(
     # Apply spatial smoothing (basic median filter)
     landcover = classifier.apply_spatial_smoothing(landcover)
 
-    # Apply monotonic smoothing (enforce sequence + minimum span constraints)
-    landcover = classifier.apply_monotonic_smoothing(landcover)
+    # PHASE 6D: Conditionally apply monotonic smoothing (disabled by default due to class collapse)
+    from spectral_classifier.config import THRESHOLDS
+    if THRESHOLDS.get('enable_monotonic_smoothing', False):
+        landcover = classifier.apply_monotonic_smoothing(landcover)
+        logger.debug("  Monotonic smoothing applied")
+    else:
+        logger.debug("  Monotonic smoothing skipped (disabled in config)")
 
     # Log class distribution
     class_counts = landcover['predicted_class'].value_counts()
@@ -395,7 +400,7 @@ This will:
         default=DEFAULT_BOUNDARY_TYPES,
         help=(
             'Which boundary types to detect and return '
-            '(default: shore_only for BEACH_DRY→BEACH_WET swash line only)'
+            '(default: shore_only for BEACH_DRY->BEACH_WET swash line only)'
         )
     )
 

@@ -114,28 +114,28 @@ for zone in ['VEGETATED_DUNE', 'BEACH_DRY', 'BEACH_WET', 'WATER']:
 
     # Band values
     print(f'  Raw bands:')
-    print(f'    Red:   {np.mean(stats["red"]):6.1f} ± {np.std(stats["red"]):5.1f}  '
+    print(f'    Red:   {np.mean(stats["red"]):6.1f} +- {np.std(stats["red"]):5.1f}  '
           f'range [{np.min(stats["red"]):3.0f}, {np.max(stats["red"]):3.0f}]')
-    print(f'    Green: {np.mean(stats["green"]):6.1f} ± {np.std(stats["green"]):5.1f}  '
+    print(f'    Green: {np.mean(stats["green"]):6.1f} +- {np.std(stats["green"]):5.1f}  '
           f'range [{np.min(stats["green"]):3.0f}, {np.max(stats["green"]):3.0f}]')
-    print(f'    Blue:  {np.mean(stats["blue"]):6.1f} ± {np.std(stats["blue"]):5.1f}  '
+    print(f'    Blue:  {np.mean(stats["blue"]):6.1f} +- {np.std(stats["blue"]):5.1f}  '
           f'range [{np.min(stats["blue"]):3.0f}, {np.max(stats["blue"]):3.0f}]')
-    print(f'    NIR:   {np.mean(stats["nir"]):6.1f} ± {np.std(stats["nir"]):5.1f}  '
+    print(f'    NIR:   {np.mean(stats["nir"]):6.1f} +- {np.std(stats["nir"]):5.1f}  '
           f'range [{np.min(stats["nir"]):3.0f}, {np.max(stats["nir"]):3.0f}]')
     print()
 
     # Derived features
     print(f'  Derived features:')
-    print(f'    Brightness:     {np.mean(stats["brightness"]):6.2f} ± {np.std(stats["brightness"]):5.2f}')
-    print(f'    NDVI:           {np.mean(stats["ndvi"]):6.3f} ± {np.std(stats["ndvi"]):5.3f}  '
+    print(f'    Brightness:     {np.mean(stats["brightness"]):6.2f} +- {np.std(stats["brightness"]):5.2f}')
+    print(f'    NDVI:           {np.mean(stats["ndvi"]):6.3f} +- {np.std(stats["ndvi"]):5.3f}  '
           f'range [{np.min(stats["ndvi"]):6.3f}, {np.max(stats["ndvi"]):6.3f}]')
-    print(f'    NDWI:           {np.mean(stats["ndwi"]):6.3f} ± {np.std(stats["ndwi"]):5.3f}  '
+    print(f'    NDWI:           {np.mean(stats["ndwi"]):6.3f} +- {np.std(stats["ndwi"]):5.3f}  '
           f'range [{np.min(stats["ndwi"]):6.3f}, {np.max(stats["ndwi"]):6.3f}]')
-    print(f'    NIR ratio:      {np.mean(stats["nir_ratio"]):6.3f} ± {np.std(stats["nir_ratio"]):5.3f}')
-    print(f'    Blue/Red ratio: {np.mean(stats["blue_red_ratio"]):6.3f} ± {np.std(stats["blue_red_ratio"]):5.3f}')
+    print(f'    NIR ratio:      {np.mean(stats["nir_ratio"]):6.3f} +- {np.std(stats["nir_ratio"]):5.3f}')
+    print(f'    Blue/Red ratio: {np.mean(stats["blue_red_ratio"]):6.3f} +- {np.std(stats["blue_red_ratio"]):5.3f}')
 
     if stats['variability']:
-        print(f'    Variability:    {np.mean(stats["variability"]):6.2f} ± {np.std(stats["variability"]):5.2f}  '
+        print(f'    Variability:    {np.mean(stats["variability"]):6.2f} +- {np.std(stats["variability"]):5.2f}  '
               f'range [{np.min(stats["variability"]):5.2f}, {np.max(stats["variability"]):5.2f}]')
 
 print('\n' + '=' * 70)

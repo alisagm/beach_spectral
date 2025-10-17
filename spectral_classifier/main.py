@@ -51,9 +51,9 @@ def analyze_all_transects(
         num_visualize: Number of transects to visualize
         verbose: Enable verbose logging
         boundary_types: Which boundary types to return
-            - 'shore_only': BEACH_DRY→BEACH_WET only (swash/shell line)
-            - 'waterline': Shore + BEACH_WET→WATER boundaries
-            - 'all': All boundaries including VEG_DUNES→BEACH_DRY
+            - 'shore_only': BEACH_DRY->BEACH_WET only (swash/shell line)
+            - 'waterline': Shore + BEACH_WET->WATER boundaries
+            - 'all': All boundaries including VEG_DUNES->BEACH_DRY
 
     Returns:
         List of all transect analysis results
@@ -168,9 +168,9 @@ def process_single_transect(
         total: Total number of transects
         direction: Transect direction ('west_to_east' or 'east_to_west')
         boundary_types: Which boundary types to return
-            - 'shore_only': BEACH_DRY→BEACH_WET only (swash/shell line)
-            - 'waterline': Shore + BEACH_WET→WATER boundaries
-            - 'all': All boundaries including VEG_DUNES→BEACH_DRY
+            - 'shore_only': BEACH_DRY->BEACH_WET only (swash/shell line)
+            - 'waterline': Shore + BEACH_WET->WATER boundaries
+            - 'all': All boundaries including VEG_DUNES->BEACH_DRY
 
     Returns:
         Dictionary with analysis results
@@ -287,7 +287,7 @@ Example usage:
         default=DEFAULT_BOUNDARY_TYPES,
         help=(
             'Which boundary types to detect and return '
-            '(default: shore_only for BEACH_DRY→BEACH_WET swash line only)'
+            '(default: shore_only for BEACH_DRY->BEACH_WET swash line only)'
         )
     )
 

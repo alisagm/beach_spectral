@@ -51,17 +51,37 @@ htmlcov/
 # Logs
 *.log
 
-# Analysis outputs (keep structure, exclude generated data)
-analysis/training_output/*/
-analysis/training_output/*.csv
-analysis/training_output/*.json
-analysis/training_output/plots/
+# Analysis outputs (keep scripts and key docs, exclude all generated data)
+analysis/training_output/*
+!analysis/training_output/*.py
+!analysis/training_output/*.md
+!analysis/training_output/README.md
+
 analysis/feature_analysis/outputs/
 analysis/feature_analysis/data/*.csv
 
-# Validation outputs (keep validation scripts, exclude results)
+# Phase diagnostics outputs (keep scripts, exclude outputs)
+analysis/phase6c_diagnostics/*
+!analysis/phase6c_diagnostics/*.py
+!analysis/phase6c_diagnostics/*.md
+!analysis/phase6c_diagnostics/README.md
+
+analysis/phase6d_validation/*
+!analysis/phase6d_validation/*.py
+!analysis/phase6d_validation/*.md
+!analysis/phase6d_validation/README.md
+
+analysis/phase6e_validation/*
+!analysis/phase6e_validation/*.py
+!analysis/phase6e_validation/*.md
+!analysis/phase6e_validation/README.md
+
+# Validation outputs (keep validation scripts and docs, exclude results)
 validation/outputs*/
 validation/plots/
+validation/*.log
+validation/*.csv
+validation/*.json
 
 # Test outputs
 tests/outputs/
@@ -107,6 +127,7 @@ temp/
 *.tmp
 *.bak
 *.swp
+nul
 
 # OS files
 Thumbs.db

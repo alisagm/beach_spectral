@@ -66,7 +66,7 @@ def analyze_empirical_data():
             print(f"  75th %:  {percentiles['75th']:>8.2f}")
             print(f"  95th %:  {percentiles['95th']:>8.2f}")
             print(f"  Max:     {percentiles['max']:>8.2f}")
-            print(f"  Mean:    {percentiles['mean']:>8.2f} ± {percentiles['std']:.2f}")
+            print(f"  Mean:    {percentiles['mean']:>8.2f} +- {percentiles['std']:.2f}")
 
     # Compare to current Phase 6A/6B thresholds
     print("\n" + "=" * 80)

@@ -11,9 +11,9 @@ NUM_TRANSECTS_TO_VISUALIZE = 5  # Number of representative transects to plot
 # Boundary detection output configuration
 # Controls which boundary types are returned by main processing pipeline
 # Options:
-#   'shore_only': BEACH_DRY→BEACH_WET only (swash line/shell line)
-#   'waterline': Shore + BEACH_WET→WATER (shore + waterline boundaries)
-#   'all': All boundaries including VEG_DUNES→BEACH_DRY
+#   'shore_only': BEACH_DRY->BEACH_WET only (swash line/shell line)
+#   'waterline': Shore + BEACH_WET->WATER (shore + waterline boundaries)
+#   'all': All boundaries including VEG_DUNES->BEACH_DRY
 DEFAULT_BOUNDARY_TYPES = 'shore_only'
 
 # Edge buffer for transition detection (meters)
@@ -33,35 +33,35 @@ BAND_INDICES = {
 # See: training_output/CLASSIFICATION_IMPROVEMENT_PLAN.md
 THRESHOLDS = {
     # NIR ratio - PRIMARY discriminator (most reliable feature)
-    # Empirical ranges: Water=0.21±0.10, WetBeach=0.56±0.13, DryBeach/Veg=0.89±0.04
+    # Empirical ranges: Water=0.21+-0.10, WetBeach=0.56+-0.13, DryBeach/Veg=0.89+-0.04
     'nir_ratio_water_max': 0.35,        # Water has very low NIR absorption
     'nir_ratio_wet_beach_min': 0.40,    # Wet beach intermediate (water-saturated sand)
     'nir_ratio_wet_beach_max': 0.70,
     'nir_ratio_dry_min': 0.80,          # Dry beach and veg dunes both high
 
     # Brightness - for distinguishing dry beach from veg dunes
-    # Empirical: DryBeach=209±6, VegDunes=145±37, WetBeach=147±20, Water=106±35
+    # Empirical: DryBeach=209+-6, VegDunes=145+-37, WetBeach=147+-20, Water=106+-35
     'dry_beach_brightness_min': 195,    # Very bright, uniform sand
     'veg_dune_brightness_max': 190,     # Lower than dry beach, more variable
     'wet_beach_brightness_max': 175,    # Moderate brightness
 
     # Variability - distinguishes veg dunes (rough) from dry beach (smooth)
-    # Empirical: VegDunes=28±11, DryBeach=4±2, WetBeach=11±5, Water=31±7
+    # Empirical: VegDunes=28+-11, DryBeach=4+-2, WetBeach=11+-5, Water=31+-7
     'veg_variability_min': 15,          # High variability from vegetation/dune structure
     'dry_beach_variability_max': 10,    # Very low variability (smooth, uniform)
 
     # NDWI - water and wet beach detection (secondary confirmation)
-    # Empirical: Water=0.75±0.12, WetBeach=0.37±0.13, DryBeach=0.08±0.03
+    # Empirical: Water=0.75+-0.12, WetBeach=0.37+-0.13, DryBeach=0.08+-0.03
     'ndwi_water_min': 0.60,             # Strong water signal
     'ndwi_wet_beach_min': 0.25,         # Elevated but not as high as water
 
     # Blue/Red ratio - water confirmation (blue > red for water)
-    # Empirical: Water=1.06±0.16, Land classes=0.80-0.96
+    # Empirical: Water=1.06+-0.16, Land classes=0.80-0.96
     'blue_red_water_min': 0.95,         # Water tends toward blue
 
     # NDVI - DEPRECATED as primary classifier (empirical values all negative!)
     # Kept for backwards compatibility and optional confirmation
-    # Empirical: Water=-0.70±0.11, WetBeach=-0.39±0.13, DryBeach=-0.08±0.03, VegDunes=-0.12±0.05
+    # Empirical: Water=-0.70+-0.11, WetBeach=-0.39+-0.13, DryBeach=-0.08+-0.03, VegDunes=-0.12+-0.05
     'ndvi_water_max': -0.50,            # Very negative for water
     'ndvi_veg_min': 0.2,                # DEPRECATED - not reliable in this dataset
     'ndvi_land_max': 0.3,               # DEPRECATED
@@ -90,29 +90,29 @@ THRESHOLDS = {
     # PHASE 2 FIX: Tightened thresholds to reduce false positives
     # PHASE 6: Enhanced with empirical data from 20-transect feature analysis
     'boundary_thresholds': {
-        # VEG_DUNES→BEACH_DRY: Inflection point detection
+        # VEG_DUNES->BEACH_DRY: Inflection point detection
         'veg_boundaries': {
             'second_deriv_threshold': 1.0,    # PHASE 2 FIX: Increased from 0.5 (only significant inflections)
             'trend_change_window': 10,         # Window (points) for trend analysis around inflection
             'min_nir_change': 20,              # PHASE 2 FIX: Increased from 10 (require larger NIR difference)
         },
-        # BEACH_WET→WATER: RGB foam peak detection
+        # BEACH_WET->WATER: RGB foam peak detection
         'surf_zone': {
             'rgb_peak_prominence': 10.0,       # PHASE 2 FIX: Increased from 5.0 (only strong foam peaks)
             'nir_threshold': -2.0,             # NIR drop requirement for confirmation
             'require_nir_drop': True,          # PHASE 2 FIX: Require NIR drop (no more foam-only detection)
         },
-        # BEACH_DRY→BEACH_WET: Derivative magnitude (existing approach)
+        # BEACH_DRY->BEACH_WET: Derivative magnitude (existing approach)
         # PHASE 6C: Relaxed thresholds based on Phase 6C diagnostic analysis
         # Previous Phase 6A/6B thresholds were too strict and rejected 25% of known shell lines
         'dry_wet': {
-            'nir_threshold': -8.0,             # PHASE 6: Tightened from -4.0 (empirical: -13.8±4.0)
+            'nir_threshold': -8.0,             # PHASE 6: Tightened from -4.0 (empirical: -13.8+-4.0)
             'require_sustainability': True,    # Check for sustained drop (confidence boost)
             'require_consensus': True,         # Check multi-band consensus (confidence boost)
             # PHASE 3: R/G ratio validation for shell-line detection
             'use_rg_ratio': True,              # Enable R/G ratio pattern validation
-            'rg_ratio_threshold': 0.98,        # Expected R/G ratio for dry→wet (R ≈ G)
-            'rg_ratio_tolerance': 0.15,        # Acceptable variance from threshold (±0.15)
+            'rg_ratio_threshold': 0.98,        # Expected R/G ratio for dry->wet (R ~ G)
+            'rg_ratio_tolerance': 0.15,        # Acceptable variance from threshold (+-0.15)
             # PHASE 6C: Relaxed thresholds based on empirical 5th percentile
             # Diagnostic analysis showed strict thresholds rejected valid shell lines:
             # - nir_before_min=160 rejected 25% of shell lines (empirical median: 173, 5th%: 139)
@@ -124,8 +124,8 @@ THRESHOLDS = {
             'variability_ratio_min': 1.5,      # PHASE 6C: Relaxed from 2.0 (some shell lines have lower ratios)
             'expected_location_min': 40,       # PHASE 6: Expected zone (meters from start)
             'expected_location_max': 120,      # PHASE 6: Expected zone (meters from end)
-            # PHASE 6C: VEG→DRY discrimination parameters
-            'expected_location_veg_dry_min': 40,  # VEG→DRY typically occurs here
+            # PHASE 6C: VEG->DRY discrimination parameters
+            'expected_location_veg_dry_min': 40,  # VEG->DRY typically occurs here
             'expected_location_veg_dry_max': 70,  # Penalize candidates in this zone
         },
     },
@@ -138,9 +138,9 @@ THRESHOLDS = {
 
     # Multi-scale smoothing windows for different boundary types
     'derivative_windows': {
-        'veg_boundaries': 7,      # VEG_DUNES→BEACH_DRY (coarse, smooth vegetation noise)
-        'surf_zone': 9,            # BEACH_WET→WATER (coarse, for foam detection)
-        'dry_wet': 5,              # BEACH_DRY→BEACH_WET (medium, preserve sharpness)
+        'veg_boundaries': 7,      # VEG_DUNES->BEACH_DRY (coarse, smooth vegetation noise)
+        'surf_zone': 9,            # BEACH_WET->WATER (coarse, for foam detection)
+        'dry_wet': 5,              # BEACH_DRY->BEACH_WET (medium, preserve sharpness)
     },
 
     # Legacy transition detection (deprecated, kept for compatibility)
@@ -156,6 +156,8 @@ THRESHOLDS = {
 
     # Sequence constraints for monotonic smoothing
     # Note: Relaxed for transition-based approach (uses NIR derivatives for boundaries)
+    # PHASE 6D: Disable monotonic smoothing by default due to 93% UNKNOWN collapse
+    'enable_monotonic_smoothing': False,  # PHASE 6D: Disabled due to catastrophic class collapse
     'min_category_span_m': 2.5,  # Minimum distance span for each category (meters)
 }
 
