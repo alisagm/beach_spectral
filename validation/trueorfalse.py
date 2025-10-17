@@ -446,6 +446,131 @@ def compare_tp_vs_fp(features_df: pd.DataFrame, output_dir: Path):
     print(f"Saved distribution plots to: {plot_path}")
 
 
+def plot_spectral_profiles_with_boundaries(
+    spectral_csv_path: Path,
+    manual_boundaries: pd.DataFrame,
+    detected_transitions: pd.DataFrame,
+    matches_df: pd.DataFrame,
+    output_dir: Path,
+    max_transects: int = 10
+):
+    """
+    Create spectral profile plots showing both manual and algorithmic boundaries.
+
+    This provides visual comparison to easily assess boundary detection quality.
+
+    Args:
+        spectral_csv_path: Path to sampled spectral data
+        manual_boundaries: DataFrame with manual boundary positions
+        detected_transitions: DataFrame with detected transitions
+        matches_df: DataFrame with TP/FP/FN labels
+        output_dir: Directory to save plots
+        max_transects: Maximum number of transects to plot (default: 10)
+    """
+    print(f"\nGenerating spectral profile plots with boundary comparison...")
+
+    spectral_data = pd.read_csv(spectral_csv_path)
+    transect_ids = sorted(spectral_data['TransectID'].unique())[:max_transects]
+
+    # Create a multi-panel figure
+    n_transects = len(transect_ids)
+    n_cols = 2
+    n_rows = (n_transects + 1) // 2
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, 4*n_rows))
+    if n_rows == 1:
+        axes = axes.reshape(1, -1)
+
+    for idx, transect_id in enumerate(transect_ids):
+        row = idx // n_cols
+        col = idx % n_cols
+        ax = axes[row, col]
+
+        # Get spectral data for this transect
+        transect_data = spectral_data[spectral_data['TransectID'] == transect_id].copy()
+        transect_data = transect_data.sort_values('distance')
+
+        # Plot NIR profile (primary detection signal)
+        ax.plot(transect_data['distance'], transect_data['nir'],
+                'k-', linewidth=1.5, label='NIR', alpha=0.7)
+
+        # Plot manual boundaries (ground truth)
+        manual_transect = manual_boundaries[manual_boundaries['transect_id'] == transect_id]
+        for _, man_row in manual_transect.iterrows():
+            ax.axvline(man_row['position'], color='blue', linestyle='--',
+                      linewidth=2, alpha=0.8, label='Manual (Ground Truth)')
+
+        # Plot detected boundaries (algorithmic)
+        detected_transect = detected_transitions[detected_transitions['transect_id'] == transect_id]
+        for _, det_row in detected_transect.iterrows():
+            # Get match info to determine TP/FP
+            match_info = matches_df[
+                (matches_df['transect_id'] == transect_id) &
+                (matches_df['detected_position'] == det_row['distance'])
+            ]
+
+            if len(match_info) > 0:
+                label_type = match_info.iloc[0]['label']
+                if label_type == 'TP':
+                    color = 'green'
+                    linestyle = '-'
+                    alpha = 0.8
+                    marker_label = 'Detected (TP)'
+                else:  # FP
+                    color = 'red'
+                    linestyle = ':'
+                    alpha = 0.6
+                    marker_label = 'Detected (FP)'
+            else:
+                color = 'orange'
+                linestyle = '-'
+                alpha = 0.7
+                marker_label = 'Detected'
+
+            ax.axvline(det_row['distance'], color=color, linestyle=linestyle,
+                      linewidth=2, alpha=alpha, label=marker_label)
+
+        # Mark false negatives (manual boundaries with no detection)
+        fn_transect = matches_df[
+            (matches_df['transect_id'] == transect_id) &
+            (matches_df['label'] == 'FN')
+        ]
+        for _, fn_row in fn_transect.iterrows():
+            # Add a marker on the NIR profile at the manual position
+            manual_pos = fn_row['manual_position']
+            # Find closest data point
+            closest_idx = (transect_data['distance'] - manual_pos).abs().idxmin()
+            nir_value = transect_data.loc[closest_idx, 'nir']
+            ax.plot(manual_pos, nir_value, 'rx', markersize=15,
+                   markeredgewidth=3, label='Missed (FN)')
+
+        # Labels and formatting
+        ax.set_xlabel('Distance along transect (m)', fontsize=10)
+        ax.set_ylabel('NIR reflectance', fontsize=10)
+        ax.set_title(f'Transect {transect_id}', fontsize=12, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+
+        # Remove duplicate legend entries
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        ax.legend(by_label.values(), by_label.keys(), loc='best', fontsize=8)
+
+    # Remove empty subplots if odd number of transects
+    if n_transects % 2 == 1:
+        fig.delaxes(axes[n_rows-1, n_cols-1])
+
+    plt.tight_layout()
+    plot_path = output_dir / 'spectral_profiles_boundary_comparison.png'
+    plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+    print(f"Saved spectral profile comparison plots to: {plot_path}")
+    print(f"  Blue dashed lines: Manual boundaries (ground truth)")
+    print(f"  Green solid lines: True Positive detections")
+    print(f"  Red dotted lines: False Positive detections")
+    print(f"  Red X markers: False Negative (missed boundaries)")
+
+
 def run_tp_fp_analysis(
     manual_csv_path: Path,
     spectral_csv_path: Path,
@@ -524,6 +649,16 @@ def run_tp_fp_analysis(
 
     # Step 5: Compare TP vs FP
     compare_tp_vs_fp(features, output_dir)
+
+    # Step 6: Generate spectral profile plots with boundary comparison
+    plot_spectral_profiles_with_boundaries(
+        spectral_csv_path=spectral_csv_path,
+        manual_boundaries=manual_boundaries,
+        detected_transitions=detected_transitions,
+        matches_df=matches,
+        output_dir=output_dir,
+        max_transects=10
+    )
 
     print("\n" + "="*80)
     print("ANALYSIS COMPLETE")

@@ -270,6 +270,7 @@ def generate_validation_report(
         f.write("- `boundary_type_confusion_matrix.csv` - Boundary classification accuracy\n\n")
 
         f.write("### Visualizations\n")
+        f.write("- `spectral_profiles_boundary_comparison.png` - **NEW**: NIR profiles with manual (blue) vs algorithmic (green/red) boundaries\n")
         f.write("- `tp_vs_fp_distributions.png` - Feature distribution comparisons\n")
         f.write("- `zone_variability_plots.png` - Zone characteristic visualizations\n")
         f.write("- `derivative_distributions_by_zone.png` - Derivative behavior by zone type\n")
