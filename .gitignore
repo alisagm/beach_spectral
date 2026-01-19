@@ -123,3 +123,8 @@ desktop.ini
 !PROJECT_STATUS.md
 !README.md
 !CONTEXT.md
+
+.claude/
+
+# input imagery
+PAIS_shorelines/
