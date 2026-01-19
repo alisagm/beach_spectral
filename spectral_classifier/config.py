@@ -1,5 +1,8 @@
 """
 Configuration parameters for spectral transect classification system.
+
+Supports 3-band (RGB or CIR) and 4-band (RGBN) imagery with mode-specific
+thresholds for shell line detection.
 """
 
 # Sampling configuration
@@ -130,6 +133,21 @@ THRESHOLDS = {
 
     # PHASE 2 FIX: Minimum confidence for final boundary acceptance
     'min_boundary_confidence': 0.75,  # Increased from 0.60 to reduce false positives
+
+    # ========================================================================
+    # RGB-ONLY MODE THRESHOLDS
+    # ========================================================================
+    # Used when NIR band is not available (3-band RGB imagery)
+    # Brightness-based detection is less reliable than NIR-based detection
+    # Maximum confidence for RGB mode is capped at 0.70
+    'rgb_thresholds': {
+        'brightness_derivative_threshold': -5.0,   # Less strict than NIR -8.0
+        'min_brightness_drop_absolute': 25.0,      # Less than NIR 39.0
+        'brightness_before_min': 150,              # Less strict than NIR 175
+        'variability_ratio_min': 1.3,              # Less strict than NIR 1.5
+        'max_confidence': 0.70,                    # Cap for RGB-only detections
+        'min_acceptance_confidence': 0.45,         # Lower than NIR 0.60
+    },
 
     # PHASE 4: False positive filtering enhancements
     'min_nir_variability': 15.0,  # Minimum NIR std dev for valid within-zone transitions
