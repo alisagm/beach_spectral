@@ -48,10 +48,22 @@ MIN_BANDS = 3
 # === HELPER FUNCTIONS ===
 
 def extract_year_from_path(path: Path) -> str:
-    """Extract year from path like 'imagery/2016/20160122/file.tif'"""
+    """
+    Extract year from path like 'imagery/2016/20160122/file.tif' or 'imagery/200605/file.tif'
+    
+    Handles:
+        - 4 digits: YYYY (e.g., '2016' → '2016')
+        - 6 digits: YYYYMM (e.g., '200605' → '2006')
+        - 8 digits: YYYYMMDD (e.g., '20160122' → '2016')
+    """
     for part in path.parts:
+        # Check for 4-digit year (YYYY)
         if re.match(r'^\d{4}$', part):
             return part
+        # Check for 6-digit date (YYYYMM)
+        if re.match(r'^\d{6}$', part):
+            return part[:4]
+        # Check for 8-digit date (YYYYMMDD)
         if re.match(r'^\d{8}$', part):
             return part[:4]
     return "unknown"

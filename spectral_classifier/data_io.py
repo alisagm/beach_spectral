@@ -194,7 +194,7 @@ def build_raster_index(
         RasterIndex object with spatial metadata and band configurations
 
     Raises:
-        ValueError: If no usable rasters found or CRS mismatch detected
+        ValueError: If no usable rasters found, CRS mismatch detected, or CRS is geographic
     """
     raster_dir = Path(raster_dir)
     
@@ -231,6 +231,15 @@ def build_raster_index(
     
     if common_crs is None:
         raise ValueError("No rasters with valid CRS found")
+
+    # Check if CRS is geographic (angular units) - pipeline requires projected CRS (meters)
+    if common_crs.is_geographic:
+        raise ValueError(
+            f"Raster CRS is geographic ({common_crs}). "
+            f"This pipeline requires projected coordinates (meters) for accurate sampling. "
+            f"Please reproject your rasters to a projected CRS like EPSG:26914 (UTM Zone 14N) using:\n"
+            f"  gdalwarp -t_srs EPSG:26914 input.tif output.tif"
+        )
 
     # Build index, tracking skipped files
     valid_paths = []
