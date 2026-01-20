@@ -15,6 +15,8 @@ from rasterio.crs import CRS
 from shapely.geometry import box
 import warnings
 
+from .config import BAND_DETECTION
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,9 +66,21 @@ class RasterIndex:
         for config in self.band_configs.values():
             summary[config] = summary.get(config, 0) + 1
         return summary
+    
+    def get_primary_band_mode(self) -> str:
+        """
+        Get the primary (most common) band mode across all rasters.
+        
+        Returns:
+            Band mode string: '4band', 'cir', or 'rgb'
+        """
+        summary = self.get_band_config_summary()
+        if not summary:
+            return BAND_CONFIG_RGB
+        return max(summary, key=summary.get)
 
 
-def detect_band_configuration(raster_path: Path, sample_size: int = 10000) -> str:
+def detect_band_configuration(raster_path: Path, sample_size: int = None) -> str:
     """
     Detect whether a 3-band raster is CIR [NIR,R,G] or RGB [R,G,B].
     
@@ -82,12 +96,19 @@ def detect_band_configuration(raster_path: Path, sample_size: int = 10000) -> st
     Args:
         raster_path: Path to raster file
         sample_size: Number of random pixels to sample for statistics
+                    (uses BAND_DETECTION['sample_size'] if None)
         
     Returns:
         '4band' if 4+ bands present
         'cir' if detected as [NIR, Red, Green]
         'rgb' if detected as [Red, Green, Blue]
     """
+    # Get configuration from config.py
+    if sample_size is None:
+        sample_size = BAND_DETECTION.get('sample_size', 10000)
+    cir_threshold = BAND_DETECTION.get('cir_variance_ratio_threshold', 1.05)
+    min_valid_samples = BAND_DETECTION.get('min_valid_samples', 100)
+    
     with rasterio.open(raster_path) as src:
         # 4-band imagery - standard RGBN
         if src.count >= 4:
@@ -126,7 +147,7 @@ def detect_band_configuration(raster_path: Path, sample_size: int = 10000) -> st
             band1_values.append(v1)
             band2_values.append(v2)
         
-        if len(band1_values) < 100:
+        if len(band1_values) < min_valid_samples:
             logger.warning(f"Insufficient valid samples ({len(band1_values)}) for band detection in {raster_path.name}")
             # Default to RGB if we can't determine
             return BAND_CONFIG_RGB
@@ -138,19 +159,18 @@ def detect_band_configuration(raster_path: Path, sample_size: int = 10000) -> st
         # Compute variance ratio
         variance_ratio = band1_std / (band2_std + 1e-6)
         
-        # Heuristic threshold
-        # CIR: NIR (band1) has higher variance than Red (band2) → ratio > 1.05
-        # RGB: Red (band1) has similar/lower variance than Green (band2) → ratio ≤ 1.05
-        CIR_THRESHOLD = 1.05
+        # Heuristic threshold from config
+        # CIR: NIR (band1) has higher variance than Red (band2) → ratio > threshold
+        # RGB: Red (band1) has similar/lower variance than Green (band2) → ratio ≤ threshold
         
-        if variance_ratio > CIR_THRESHOLD:
+        if variance_ratio > cir_threshold:
             detected = BAND_CONFIG_CIR
             logger.info(f"Detected CIR imagery: {raster_path.name} "
-                       f"(Band1/Band2 StdDev ratio = {variance_ratio:.3f} > {CIR_THRESHOLD})")
+                       f"(Band1/Band2 StdDev ratio = {variance_ratio:.3f} > {cir_threshold})")
         else:
             detected = BAND_CONFIG_RGB
             logger.info(f"Detected RGB imagery: {raster_path.name} "
-                       f"(Band1/Band2 StdDev ratio = {variance_ratio:.3f} ≤ {CIR_THRESHOLD})")
+                       f"(Band1/Band2 StdDev ratio = {variance_ratio:.3f} ≤ {cir_threshold})")
         
         return detected
 

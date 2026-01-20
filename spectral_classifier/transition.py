@@ -15,8 +15,24 @@ from .data_io import BAND_CONFIG_4BAND, BAND_CONFIG_CIR, BAND_CONFIG_RGB
 logger = logging.getLogger(__name__)
 
 
-# Maximum confidence for RGB-only detections (no NIR)
-RGB_MAX_CONFIDENCE = 0.70
+def _get_max_confidence(band_mode: str) -> float:
+    """Get maximum confidence cap for a given band mode from config."""
+    if band_mode == BAND_CONFIG_RGB:
+        return THRESHOLDS.get('rgb_thresholds', {}).get('max_confidence', 0.70)
+    elif band_mode == BAND_CONFIG_CIR:
+        return THRESHOLDS.get('cir_thresholds', {}).get('max_confidence', 0.90)
+    else:  # 4-band
+        return 0.95  # Full confidence for 4-band
+
+
+def _get_min_acceptance_confidence(band_mode: str) -> float:
+    """Get minimum acceptance confidence for a given band mode from config."""
+    if band_mode == BAND_CONFIG_RGB:
+        return THRESHOLDS.get('rgb_thresholds', {}).get('min_acceptance_confidence', 0.45)
+    elif band_mode == BAND_CONFIG_CIR:
+        return THRESHOLDS.get('cir_thresholds', {}).get('min_acceptance_confidence', 0.55)
+    else:  # 4-band
+        return 0.60
 
 
 class TransitionDetector:
@@ -40,7 +56,7 @@ class TransitionDetector:
         Identify zone boundary transitions using boundary-type-specific detection methods.
 
         Automatically selects detection method based on band availability:
-        - 4band/CIR: NIR-based detection (full capability)
+        - 4band/CIR: NIR-based detection (full capability, CIR slightly reduced confidence)
         - RGB: Brightness-based detection (degraded mode, lower confidence)
 
         Args:
@@ -62,24 +78,24 @@ class TransitionDetector:
         all_transitions = []
 
         if has_nir:
-            # Full NIR-based detection
+            # Full NIR-based detection (works for both 4-band and CIR)
             
             # Method 1: VEG_DUNES boundaries (inflection detection)
-            veg_transitions = self._detect_vegetation_boundaries(features, landcover)
+            veg_transitions = self._detect_vegetation_boundaries(features, landcover, band_mode)
             all_transitions.extend(veg_transitions)
 
             # Method 2: Surf zone boundaries (RGB foam detection)
-            surf_transitions = self._detect_surf_zone_boundaries(features, landcover)
+            surf_transitions = self._detect_surf_zone_boundaries(features, landcover, band_mode)
             all_transitions.extend(surf_transitions)
 
             # Method 3: Dry/wet boundaries (NIR derivative magnitude)
-            dw_transitions = self._detect_dry_wet_boundaries(features, landcover)
+            dw_transitions = self._detect_dry_wet_boundaries(features, landcover, band_mode)
         else:
             # RGB-only mode - degraded detection
             logger.info("Using RGB-only detection mode (no NIR available)")
             
             # Method 1: Surf zone boundaries (RGB foam detection) - still works
-            surf_transitions = self._detect_surf_zone_boundaries(features, landcover)
+            surf_transitions = self._detect_surf_zone_boundaries(features, landcover, band_mode)
             all_transitions.extend(surf_transitions)
             
             # Method 3: Dry/wet boundaries using brightness (degraded)
@@ -162,7 +178,7 @@ class TransitionDetector:
         Key differences from NIR-based detection:
         - Uses brightness_rgb_d1_w5 instead of nir_d1_w5
         - Lower thresholds (brightness changes are smaller)
-        - Lower maximum confidence (capped at 0.70)
+        - Lower maximum confidence (capped at config value)
         - Still uses R/G ratio validation
 
         Args:
@@ -189,10 +205,11 @@ class TransitionDetector:
 
         # RGB-specific thresholds (more lenient than NIR)
         rgb_config = self.thresholds.get('rgb_thresholds', {})
-        threshold = rgb_config.get('brightness_derivative_threshold', -5.0)  # Less strict than NIR -8.0
-        min_brightness_drop_abs = rgb_config.get('min_brightness_drop_absolute', 25.0)  # Less than NIR 39.0
-        brightness_before_min = rgb_config.get('brightness_before_min', 150)  # Less than NIR 175
-        var_ratio_min = rgb_config.get('variability_ratio_min', 1.3)  # Less strict
+        threshold = rgb_config.get('brightness_derivative_threshold', -5.0)
+        min_brightness_drop_abs = rgb_config.get('min_brightness_drop_absolute', 25.0)
+        brightness_before_min = rgb_config.get('brightness_before_min', 150)
+        var_ratio_min = rgb_config.get('variability_ratio_min', 1.3)
+        max_confidence = _get_max_confidence(BAND_CONFIG_RGB)
         
         # Use same expected location as NIR mode
         config = self.thresholds.get('boundary_thresholds', {}).get('dry_wet', {})
@@ -296,14 +313,15 @@ class TransitionDetector:
                 confidence -= 0.06 * penalty
 
             # Cap confidence for RGB mode
-            confidence = min(confidence, RGB_MAX_CONFIDENCE)
+            confidence = min(confidence, max_confidence)
             confidence = max(confidence, 0.25)
 
             logger.debug(f"  RGB candidate at {distance.iloc[i]:.1f}m: "
                         f"conf={confidence:.2f}, brightness_drop={brightness_drop_abs:.1f}, "
                         f"deriv={magnitude:.2f}, var_ratio={var_ratio:.2f}")
 
-            if confidence >= 0.45:  # Lower threshold for RGB mode
+            min_acceptance = _get_min_acceptance_confidence(BAND_CONFIG_RGB)
+            if confidence >= min_acceptance:
                 transitions.append({
                     'index': i,
                     'distance': distance.iloc[i],
@@ -510,7 +528,8 @@ class TransitionDetector:
     def _detect_vegetation_boundaries(
         self,
         features: pd.DataFrame,
-        landcover: pd.DataFrame
+        landcover: pd.DataFrame,
+        band_mode: str = BAND_CONFIG_4BAND
     ) -> List[Dict]:
         """
         Detect VEG_DUNES->BEACH_DRY boundaries using inflection point detection.
@@ -524,6 +543,7 @@ class TransitionDetector:
         nir = features.get('nir', features.get('brightness'))
 
         transitions = []
+        max_confidence = _get_max_confidence(band_mode)
 
         veg_config = self.thresholds.get('boundary_thresholds', {}).get('veg_boundaries', {})
         threshold = veg_config.get('second_deriv_threshold', 1.0)
@@ -546,11 +566,15 @@ class TransitionDetector:
 
                     if nir_before > nir_after + min_nir_change:
                         confidence = min(0.65 + (curvature_change / 10.0), 0.85)
+                        
+                        # Apply band-mode confidence cap
+                        confidence = min(confidence, max_confidence)
 
                         is_valid, conf_adjustment = self._validate_rg_pattern_for_boundary_type(
                             features, i, 'veg'
                         )
                         confidence += conf_adjustment
+                        confidence = min(confidence, max_confidence)
 
                         transitions.append({
                             'index': i,
@@ -559,7 +583,8 @@ class TransitionDetector:
                             'confidence': confidence,
                             'curvature_change': curvature_change,
                             'nir_change': nir_before - nir_after,
-                            'detection_method': 'inflection_point'
+                            'detection_method': 'inflection_point',
+                            'band_mode': band_mode
                         })
 
         logger.debug(f"Found {len(transitions)} vegetation boundary candidates")
@@ -569,7 +594,8 @@ class TransitionDetector:
     def _detect_surf_zone_boundaries(
         self,
         features: pd.DataFrame,
-        landcover: pd.DataFrame
+        landcover: pd.DataFrame,
+        band_mode: str = BAND_CONFIG_4BAND
     ) -> List[Dict]:
         """
         Detect BEACH_WET->WATER boundaries using RGB foam peak detection.
@@ -585,6 +611,7 @@ class TransitionDetector:
         has_nir = nir_d1 is not None and not nir_d1.isna().all()
 
         transitions = []
+        max_confidence = _get_max_confidence(band_mode)
 
         surf_config = self.thresholds.get('boundary_thresholds', {}).get('surf_zone', {})
         require_nir_drop = surf_config.get('require_nir_drop', True)
@@ -598,11 +625,15 @@ class TransitionDetector:
                         continue
 
                 confidence = 0.65 if has_nir else 0.55
+                
+                # Apply band-mode confidence cap
+                confidence = min(confidence, max_confidence)
 
                 is_valid, conf_adjustment = self._validate_rg_pattern_for_boundary_type(
                     features, i, 'surf'
                 )
                 confidence += conf_adjustment
+                confidence = min(confidence, max_confidence)
 
                 transitions.append({
                     'index': i,
@@ -610,7 +641,8 @@ class TransitionDetector:
                     'type': 'surf_foam',
                     'confidence': confidence,
                     'has_nir_confirmation': has_nir,
-                    'detection_method': 'rgb_foam_peak'
+                    'detection_method': 'rgb_foam_peak',
+                    'band_mode': band_mode
                 })
 
         logger.debug(f"Found {len(transitions)} surf zone boundary candidates")
@@ -620,10 +652,13 @@ class TransitionDetector:
     def _detect_dry_wet_boundaries(
         self,
         features: pd.DataFrame,
-        landcover: pd.DataFrame
+        landcover: pd.DataFrame,
+        band_mode: str = BAND_CONFIG_4BAND
     ) -> List[Dict]:
         """
         Detect BEACH_DRY->BEACH_WET boundaries using NIR derivative magnitude.
+        
+        Works for both 4-band and CIR modes (both have NIR).
         """
         nir_d1 = features.get('nir_d1_w5', features.get('nir_d1_smooth'))
         if nir_d1 is None or nir_d1.isna().all():
@@ -634,6 +669,8 @@ class TransitionDetector:
         nir = features['nir']
 
         transitions = []
+        max_confidence = _get_max_confidence(band_mode)
+        min_acceptance = _get_min_acceptance_confidence(band_mode)
 
         config = self.thresholds.get('boundary_thresholds', {}).get('dry_wet', {})
         threshold = config.get('nir_threshold', -8.0)
@@ -649,7 +686,8 @@ class TransitionDetector:
 
         logger.debug(f"Dry/wet detection config: NIR_drop_min={min_nir_drop_abs}, "
                     f"brightness_min={brightness_min}, NIR_before_min={nir_before_min}, "
-                    f"expected_zone={expected_loc_min}-{expected_loc_max}m")
+                    f"expected_zone={expected_loc_min}-{expected_loc_max}m, "
+                    f"band_mode={band_mode}, max_conf={max_confidence}")
 
         for i in range(len(nir_d1)):
             if not (nir_d1.iloc[i] < threshold and nir.iloc[i] > min_nir):
@@ -767,14 +805,15 @@ class TransitionDetector:
                 penalty = (var_ratio_min - var_ratio) / var_ratio_min
                 confidence -= 0.08 * penalty
 
-            confidence = min(confidence, 0.95)
+            # Apply band-mode confidence cap
+            confidence = min(confidence, max_confidence)
             confidence = max(confidence, 0.30)
 
             logger.debug(f"  Candidate at {distance.iloc[i]:.1f}m: "
                         f"conf={confidence:.2f}, NIR_drop={nir_drop_abs:.1f}, "
                         f"deriv={magnitude:.2f}, var_ratio={var_ratio:.2f}")
 
-            if confidence >= 0.60:
+            if confidence >= min_acceptance:
                 transitions.append({
                     'index': i,
                     'distance': distance.iloc[i],
@@ -790,10 +829,10 @@ class TransitionDetector:
                     'num_bands_agreeing': num_bands,
                     'band_magnitudes': band_mags,
                     'detection_method': 'derivative_magnitude',
-                    'band_mode': BAND_CONFIG_4BAND
+                    'band_mode': band_mode
                 })
 
-        logger.debug(f"Found {len(transitions)} dry/wet boundary candidates (NIR)")
+        logger.debug(f"Found {len(transitions)} dry/wet boundary candidates (NIR, mode={band_mode})")
 
         return transitions
 
@@ -904,12 +943,15 @@ class TransitionDetector:
                 filtered.append(transition)
                 continue
 
-            # Relaxed threshold for RGB mode
+            # Get band-mode-specific minimum confidence
             band_mode = transition.get('band_mode', BAND_CONFIG_4BAND)
+            detection_mode = transition.get('detection_mode', 'strict')
+            
             if band_mode == BAND_CONFIG_RGB:
-                effective_min_confidence = 0.45  # Lower for RGB
+                effective_min_confidence = _get_min_acceptance_confidence(BAND_CONFIG_RGB)
+            elif band_mode == BAND_CONFIG_CIR:
+                effective_min_confidence = _get_min_acceptance_confidence(BAND_CONFIG_CIR)
             else:
-                detection_mode = transition.get('detection_mode', 'strict')
                 if detection_mode == 'fallback':
                     effective_min_confidence = 0.50
                 else:
@@ -1065,7 +1107,7 @@ class TransitionDetector:
         in_zone.sort(key=lambda c: c['confidence'], reverse=True)
         best = in_zone[0]
 
-        min_confidence = 0.40 if band_mode == BAND_CONFIG_RGB else 0.50
+        min_confidence = _get_min_acceptance_confidence(band_mode) if band_mode else 0.50
         if best['confidence'] < min_confidence:
             return []
 
@@ -1207,6 +1249,8 @@ class TransitionDetector:
         if band_mode is None:
             band_mode = self._detect_band_mode(features)
             
+        max_confidence = _get_max_confidence(band_mode)
+            
         if band_mode == BAND_CONFIG_RGB:
             # Use RGB brightness detection with relaxed thresholds
             d1_col = 'brightness_rgb_d1_smooth'
@@ -1256,6 +1300,9 @@ class TransitionDetector:
             else:
                 confidence = 0.50 + (magnitude - 4.0) / 20.0
                 confidence = max(0.50, min(confidence, 0.70))
+            
+            # Apply band-mode confidence cap
+            confidence = min(confidence, max_confidence)
 
             transitions.append({
                 'index': i,

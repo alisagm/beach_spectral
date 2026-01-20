@@ -176,7 +176,7 @@ def sample_transect(
     overlapping_rasters: List[Path],
     direction: str = 'west_to_east',
     raster_index: RasterIndex = None
-) -> Tuple[pd.DataFrame, str]:
+) -> pd.DataFrame:
     """
     Extract spectral values along a transect from rasters.
 
@@ -187,10 +187,12 @@ def sample_transect(
         raster_index: Optional RasterIndex for band configuration lookup
 
     Returns:
-        Tuple of:
-        - DataFrame with columns: [TransectID, distance, red, green, blue, nir]
-          (nir may be NaN for RGB-only imagery)
-        - band_mode string: '4band', 'cir', or 'rgb'
+        DataFrame with columns: [TransectID, distance, red, green, blue, nir]
+        (nir may be NaN for RGB-only imagery, blue may be NaN for CIR imagery)
+        
+    Note:
+        Band mode is determined at the dataset level via raster_index.get_primary_band_mode(),
+        not per-transect. This keeps the return signature simple.
     """
     transect_id = transect_row.TransectID
     geometry = transect_row.geometry
@@ -210,7 +212,6 @@ def sample_transect(
 
     # Open all overlapping rasters
     datasets = []
-    detected_band_mode = None
     
     try:
         for raster_path in overlapping_rasters:
@@ -223,10 +224,6 @@ def sample_transect(
                 spectral_values, band_config = sample_raster_at_point(
                     point, datasets, band_configs
                 )
-                
-                # Track detected band mode (use first non-None detection)
-                if detected_band_mode is None:
-                    detected_band_mode = band_config
 
                 data.append({
                     'TransectID': transect_id,
@@ -263,18 +260,24 @@ def sample_transect(
 
     df = pd.DataFrame(data)
     
-    # Default band mode if not detected
-    if detected_band_mode is None:
-        detected_band_mode = BAND_CONFIG_RGB
-
-    # Log band mode
+    # Log sampling summary
     has_nir = not df['nir'].isna().all()
+    has_blue = not df['blue'].isna().all()
+    
+    # Determine band mode for logging
+    if has_nir and has_blue:
+        band_mode = BAND_CONFIG_4BAND
+    elif has_nir and not has_blue:
+        band_mode = BAND_CONFIG_CIR
+    else:
+        band_mode = BAND_CONFIG_RGB
+    
     logger.info(
         f"Transect {transect_id}: sampled {len(df)} points over "
-        f"{df['distance'].max():.1f}m (band_mode={detected_band_mode}, has_nir={has_nir})"
+        f"{df['distance'].max():.1f}m (band_mode={band_mode})"
     )
 
-    return df, detected_band_mode
+    return df
 
 
 def validate_spectral_data(df: pd.DataFrame, require_nir: bool = False) -> bool:
@@ -303,6 +306,9 @@ def validate_spectral_data(df: pd.DataFrame, require_nir: bool = False) -> bool:
         if df[band].isnull().any():
             if band == 'nir' and not require_nir:
                 continue  # Allow NaN in NIR for 3-band data
+            if band == 'blue':
+                # Allow NaN in Blue for CIR data
+                continue
             raise ValueError(f"Spectral data contains NaN values in {band} band")
 
     # Check for negative values (invalid reflectance)
@@ -323,24 +329,3 @@ def validate_spectral_data(df: pd.DataFrame, require_nir: bool = False) -> bool:
         raise ValueError("Distance values are not monotonically increasing")
 
     return True
-
-
-def get_band_mode_from_dataframe(df: pd.DataFrame) -> str:
-    """
-    Determine band mode from DataFrame contents.
-    
-    Args:
-        df: DataFrame with spectral columns
-        
-    Returns:
-        Band mode string: '4band', 'cir', or 'rgb'
-    """
-    has_nir = 'nir' in df.columns and not df['nir'].isna().all()
-    has_blue = 'blue' in df.columns and not df['blue'].isna().all()
-    
-    if has_nir and has_blue:
-        return BAND_CONFIG_4BAND
-    elif has_nir and not has_blue:
-        return BAND_CONFIG_CIR
-    else:
-        return BAND_CONFIG_RGB

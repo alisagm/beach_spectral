@@ -31,6 +31,24 @@ BAND_INDICES = {
     'nir': 3
 }
 
+# ============================================================================
+# BAND DETECTION CONFIGURATION
+# ============================================================================
+# Heuristics for distinguishing CIR [NIR,R,G] from RGB [R,G,B] in 3-band imagery
+BAND_DETECTION = {
+    # Variance ratio threshold: Band1_StdDev / Band2_StdDev
+    # CIR: NIR (band1) has higher variance than Red (band2) → ratio > threshold
+    # RGB: Red (band1) has similar/lower variance than Green (band2) → ratio ≤ threshold
+    # Empirical values from PAIS imagery: CIR ≈ 1.14, RGB ≈ 0.97
+    'cir_variance_ratio_threshold': 1.05,
+    
+    # Minimum valid samples needed for reliable detection
+    'min_valid_samples': 100,
+    
+    # Sample size for band detection (random pixels)
+    'sample_size': 10000,
+}
+
 # Classification thresholds
 # Updated based on training data analysis (seed 321197, n=2602 points, 10 transects)
 # See: training_output/CLASSIFICATION_IMPROVEMENT_PLAN.md
@@ -139,7 +157,6 @@ THRESHOLDS = {
     # ========================================================================
     # Used when NIR band is not available (3-band RGB imagery)
     # Brightness-based detection is less reliable than NIR-based detection
-    # Maximum confidence for RGB mode is capped at 0.70
     'rgb_thresholds': {
         'brightness_derivative_threshold': -5.0,   # Less strict than NIR -8.0
         'min_brightness_drop_absolute': 25.0,      # Less than NIR 39.0
@@ -147,6 +164,16 @@ THRESHOLDS = {
         'variability_ratio_min': 1.3,              # Less strict than NIR 1.5
         'max_confidence': 0.70,                    # Cap for RGB-only detections
         'min_acceptance_confidence': 0.45,         # Lower than NIR 0.60
+    },
+
+    # ========================================================================
+    # CIR MODE THRESHOLDS
+    # ========================================================================
+    # Used for 3-band CIR [NIR, Red, Green] imagery
+    # Still has NIR so uses full NIR-based detection, but missing Blue band
+    'cir_thresholds': {
+        'max_confidence': 0.90,                    # Slightly lower than 4-band (0.95) due to missing Blue
+        'min_acceptance_confidence': 0.55,         # Same as 4-band
     },
 
     # PHASE 4: False positive filtering enhancements

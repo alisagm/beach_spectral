@@ -1,5 +1,8 @@
 """
 Main pipeline orchestration for spectral transect classification system.
+
+Supports 3-band (RGB or CIR) and 4-band (RGBN) imagery with automatic
+band configuration detection.
 """
 
 import logging
@@ -12,7 +15,8 @@ from .data_io import (
     build_raster_index,
     load_transects,
     reproject_if_needed,
-    find_overlapping_rasters
+    find_overlapping_rasters,
+    RasterIndex
 )
 from .sampler import sample_transect, validate_spectral_data
 from .features import SpectralFeatures
@@ -44,8 +48,11 @@ def analyze_all_transects(
     """
     Main pipeline to analyze all transects.
 
+    Supports both 3-band (RGB or CIR) and 4-band (RGBN) imagery.
+    Band configuration is auto-detected per raster.
+
     Args:
-        raster_dir: Directory containing GeoTIFF rasters
+        raster_dir: Directory containing raster files (.tif, .tiff, .jp2)
         transect_geojson: Path to GeoJSON file with transects
         output_dir: Directory to save outputs
         num_visualize: Number of transects to visualize
@@ -68,9 +75,16 @@ def analyze_all_transects(
     logger.info("=" * 60)
     logger.info(f"Boundary detection mode: {boundary_types}")
 
-    # Step 1: Build raster spatial index
+    # Step 1: Build raster spatial index (includes band configuration detection)
     logger.info("Step 1: Building raster spatial index...")
     raster_index = build_raster_index(raster_dir)
+    
+    # Log band configuration summary
+    band_summary = raster_index.get_band_config_summary()
+    logger.info(f"Band configurations: {band_summary}")
+    
+    primary_mode = raster_index.get_primary_band_mode()
+    logger.info(f"Primary band mode: {primary_mode}")
 
     # Step 2: Load transects and handle CRS
     logger.info("Step 2: Loading transects...")
@@ -124,7 +138,9 @@ def analyze_all_transects(
         processing_metadata={
             'raster_dir': str(raster_dir),
             'transect_file': str(transect_geojson),
-            'raster_crs': str(raster_index.crs)
+            'raster_crs': str(raster_index.crs),
+            'band_configurations': band_summary,
+            'primary_band_mode': primary_mode
         }
     )
 
@@ -152,7 +168,7 @@ def analyze_all_transects(
 
 def process_single_transect(
     transect_row,
-    raster_index,
+    raster_index: RasterIndex,
     current_idx: int,
     total: int,
     direction: str = 'west_to_east',
@@ -163,7 +179,7 @@ def process_single_transect(
 
     Args:
         transect_row: Row from transects GeoDataFrame
-        raster_index: RasterIndex object
+        raster_index: RasterIndex object (includes band configurations)
         current_idx: Current transect number
         total: Total number of transects
         direction: Transect direction ('west_to_east' or 'east_to_west')
@@ -187,8 +203,13 @@ def process_single_transect(
 
     logger.debug(f"  Found {len(overlapping_rasters)} overlapping rasters")
 
-    # Sample spectral values
-    spectral_data = sample_transect(transect_row, overlapping_rasters, direction)
+    # Sample spectral values (pass raster_index for band config lookup)
+    spectral_data = sample_transect(
+        transect_row, 
+        overlapping_rasters, 
+        direction,
+        raster_index=raster_index  # IMPORTANT: Pass raster_index for CIR detection
+    )
     validate_spectral_data(spectral_data)
 
     logger.debug(f"  Sampled {len(spectral_data)} points")
@@ -243,6 +264,9 @@ Example usage:
     --transects /path/to/transects.geojson \\
     --output /path/to/output \\
     --num-visualize 5
+
+Supports 3-band (RGB, CIR) and 4-band (RGBN) imagery.
+Band configuration is auto-detected per raster file.
         """
     )
 
@@ -250,7 +274,7 @@ Example usage:
         '--rasters',
         type=Path,
         required=True,
-        help='Directory containing GeoTIFF raster files'
+        help='Directory containing raster files (.tif, .tiff, .jp2)'
     )
 
     parser.add_argument(
