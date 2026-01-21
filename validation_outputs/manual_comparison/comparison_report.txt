@@ -1,0 +1,129 @@
+MANUAL vs ALGORITHM SHORELINE COMPARISON
+============================================================
+Generated: 2026-01-20 14:31:13.310525
+
+Manual shorelines: C:\Users\alisa\Desktop\SIP\git\beach_spectral\PAIS_shorelines\features\PAIS_shoreline.shp
+Algorithm outputs: C:\Users\alisa\Desktop\SIP\git\beach_spectral\OUTPUT
+Transects: C:\Users\alisa\Desktop\SIP\git\beach_spectral\INPUT\shorelineTransPais.json
+
+============================================================
+
+=== 1995 ===
+Coverage: 572 / 2108 transects (27.1%)
+
+DIRECTIONAL BIAS:
+  Mean difference: -3.17 m (algorithm seaward)
+  Median difference: -1.16 m
+  
+MAGNITUDE:
+  Std deviation: 9.48 m
+  Mean absolute error: 3.92 m
+
+DISTRIBUTION:
+  Landward (positive): 28.0%
+  Seaward (negative): 72.0%
+
+EXTREMES:
+  Best agreement: Transect 120 (0.00 m)
+  Worst landward: Transect 26 (+7.28 m)
+  Worst seaward: Transect 490 (-65.73 m)
+
+=== 2004 ===
+Coverage: 2108 / 2108 transects (100.0%)
+
+DIRECTIONAL BIAS:
+  Mean difference: -21.69 m (algorithm seaward)
+  Median difference: -38.40 m
+  
+MAGNITUDE:
+  Std deviation: 48.80 m
+  Mean absolute error: 44.05 m
+
+DISTRIBUTION:
+  Landward (positive): 22.9%
+  Seaward (negative): 77.1%
+
+EXTREMES:
+  Best agreement: Transect 1714 (0.00 m)
+  Worst landward: Transect 185 (+152.68 m)
+  Worst seaward: Transect 2042 (-107.12 m)
+
+=== 2010 ===
+Coverage: 2105 / 2108 transects (99.9%)
+
+DIRECTIONAL BIAS:
+  Mean difference: -8.29 m (algorithm seaward)
+  Median difference: -3.54 m
+  
+MAGNITUDE:
+  Std deviation: 26.90 m
+  Mean absolute error: 21.82 m
+
+DISTRIBUTION:
+  Landward (positive): 33.3%
+  Seaward (negative): 66.7%
+
+EXTREMES:
+  Best agreement: Transect 1625 (0.00 m)
+  Worst landward: Transect 320 (+164.49 m)
+  Worst seaward: Transect 2104 (-90.21 m)
+
+=== 2016 ===
+Coverage: 2108 / 2108 transects (100.0%)
+
+DIRECTIONAL BIAS:
+  Mean difference: -24.97 m (algorithm seaward)
+  Median difference: -37.15 m
+  
+MAGNITUDE:
+  Std deviation: 36.65 m
+  Mean absolute error: 37.49 m
+
+DISTRIBUTION:
+  Landward (positive): 23.3%
+  Seaward (negative): 76.7%
+
+EXTREMES:
+  Best agreement: Transect 1225 (-0.04 m)
+  Worst landward: Transect 275 (+150.99 m)
+  Worst seaward: Transect 235 (-87.66 m)
+
+=== 2020 ===
+Coverage: 832 / 2108 transects (39.5%)
+
+DIRECTIONAL BIAS:
+  Mean difference: -30.79 m (algorithm seaward)
+  Median difference: -38.19 m
+  
+MAGNITUDE:
+  Std deviation: 22.38 m
+  Mean absolute error: 33.45 m
+
+DISTRIBUTION:
+  Landward (positive): 10.1%
+  Seaward (negative): 89.9%
+
+EXTREMES:
+  Best agreement: Transect 123 (-0.04 m)
+  Worst landward: Transect 237 (+107.55 m)
+  Worst seaward: Transect 703 (-62.03 m)
+
+=== 2022 ===
+Coverage: 2107 / 2108 transects (100.0%)
+
+DIRECTIONAL BIAS:
+  Mean difference: -5.48 m (algorithm seaward)
+  Median difference: -0.95 m
+  
+MAGNITUDE:
+  Std deviation: 28.79 m
+  Mean absolute error: 16.94 m
+
+DISTRIBUTION:
+  Landward (positive): 39.1%
+  Seaward (negative): 60.9%
+
+EXTREMES:
+  Best agreement: Transect 981 (-0.00 m)
+  Worst landward: Transect 1373 (+211.16 m)
+  Worst seaward: Transect 2100 (-178.71 m)

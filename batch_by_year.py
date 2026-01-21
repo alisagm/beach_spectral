@@ -18,12 +18,13 @@ from pathlib import Path
 from collections import defaultdict
 from datetime import datetime
 import geopandas as gpd
-from shapely.geometry import LineString
+from shapely.geometry import LineString, MultiLineString
 import matplotlib.pyplot as plt
 import rasterio
 
 from spectral_classifier.main import analyze_all_transects
 from spectral_classifier.data_io import BAND_CONFIG_4BAND, BAND_CONFIG_CIR, BAND_CONFIG_RGB
+from spectral_classifier.footprint_clip import compute_merged_footprint, clip_shoreline_to_footprint
 
 # === CONFIGURATION ===
 # Update this path for your system
@@ -43,6 +44,10 @@ TARGET_TRANSECT_ID = 1000
 
 # Minimum bands required (changed from 4 to 3 for 3-band support)
 MIN_BANDS = 3
+
+# Footprint clipping settings
+EDGE_BUFFER_M = 25.0  # Buffer inward from imagery edges
+MIN_SEGMENT_LENGTH_M = 100.0  # Drop segments shorter than this
 
 
 # === HELPER FUNCTIONS ===
@@ -218,204 +223,99 @@ def plot_spectral_profile(result: dict, output_path: Path, year: str):
     """
     data = result.get('data')
     if data is None or data.empty:
-        print(f"  Warning: No spectral data for transect {result.get('transect_id')}, skipping plot")
-        return None
+        print(f"  Warning: No data available for spectral profile plot")
+        return
     
-    transect_id = result.get('transect_id', 'unknown')
-    transitions = result.get('transitions', [])
-    
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(12, 6))
     
     distance = data['distance']
     
-    # Check which bands are available
-    has_nir = 'nir' in data.columns and not data['nir'].isna().all()
-    has_blue = 'blue' in data.columns and not data['blue'].isna().all()
+    # Plot RGB (always available)
+    ax.plot(distance, data['red'], 'r-', label='Red', alpha=0.8)
+    ax.plot(distance, data['green'], 'g-', label='Green', alpha=0.8)
+    ax.plot(distance, data['blue'], 'b-', label='Blue', alpha=0.8)
     
-    # Determine band mode for title
-    if has_nir and has_blue:
-        band_mode = '4-band'
-    elif has_nir:
-        band_mode = 'CIR'
-    else:
-        band_mode = 'RGB'
+    # Plot NIR if available
+    if 'nir' in data.columns and data['nir'].notna().any():
+        ax.plot(distance, data['nir'], 'k-', label='NIR', linewidth=2)
     
-    # Plot each band with distinct colors
-    ax.plot(distance, data['red'], color='#e41a1c', linewidth=1.5, label='Red', alpha=0.8)
-    ax.plot(distance, data['green'], color='#4daf4a', linewidth=1.5, label='Green', alpha=0.8)
+    # Mark shell line transitions
+    transitions = result.get('transitions', [])
+    for trans in transitions:
+        if trans.get('type') == 'dry_wet_derivative':
+            shell_dist = trans.get('distance', 0)
+            ax.axvline(x=shell_dist, color='orange', linestyle='--', linewidth=2, 
+                      label=f'Shell Line ({shell_dist:.1f}m)')
     
-    if has_blue:
-        ax.plot(distance, data['blue'], color='#377eb8', linewidth=1.5, label='Blue', alpha=0.8)
-    
-    if has_nir:
-        ax.plot(distance, data['nir'], color='#984ea3', linewidth=1.5, label='NIR', alpha=0.8)
-    
-    # Find shell line transition (dry_wet_derivative type)
-    shell_line = None
-    for t in transitions:
-        if t.get('type') == 'dry_wet_derivative':
-            shell_line = t
-            break
-    
-    # Add shell line marker if detected
-    if shell_line:
-        shell_dist = shell_line['distance']
-        shell_conf = shell_line.get('confidence', 0)
-        
-        # Vertical line at shell line location
-        ax.axvline(x=shell_dist, color='#ff7f00', linewidth=2, linestyle='--', 
-                   label=f'Shell Line ({shell_dist:.1f}m)', alpha=0.9)
-        
-        # Annotation with confidence
-        bands_to_check = ['red', 'green']
-        if has_blue:
-            bands_to_check.append('blue')
-        if has_nir:
-            bands_to_check.append('nir')
-        
-        y_max = max(data[bands_to_check].max())
-        ax.annotate(f'conf: {shell_conf:.2f}', 
-                    xy=(shell_dist, y_max * 0.95),
-                    xytext=(shell_dist + 5, y_max * 0.95),
-                    fontsize=9, color='#ff7f00',
-                    ha='left', va='top')
-    
-    # Labels and title
-    ax.set_xlabel('Distance from West (m)', fontsize=11)
-    ax.set_ylabel('DN Value', fontsize=11)
-    
-    # Title indicates band mode and detection status
-    detection_status = "detected" if shell_line else "no detection"
-    ax.set_title(f'Spectral Profile - Year {year}, Transect {transect_id}\n'
-                 f'({band_mode}, {detection_status})', 
-                 fontsize=12, fontweight='bold')
-    
-    # Legend
-    ax.legend(loc='upper right', framealpha=0.9)
-    
-    # Grid for readability
-    ax.grid(True, alpha=0.3, linestyle='-')
-    ax.set_axisbelow(True)
-    
-    # Set reasonable y-axis limits
-    bands_to_check = ['red', 'green']
-    if has_blue:
-        bands_to_check.append('blue')
-    if has_nir:
-        bands_to_check.append('nir')
-    
-    y_max = max(data[bands_to_check].max())
-    ax.set_ylim(0, y_max * 1.1)
+    ax.set_xlabel('Distance from West (m)')
+    ax.set_ylabel('DN Value')
+    ax.set_title(f'Spectral Profile - Year {year}, Transect {result.get("transect_id", "?")}')
+    ax.legend(loc='upper right')
+    ax.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+    plt.savefig(output_path, dpi=150)
+    plt.close()
     
-    print(f"  Saved spectral profile: {output_path.name} (Transect {transect_id}, {band_mode}, {detection_status})")
-    return output_path
+    print(f"  Saved spectral profile: {output_path.name}")
 
 
-def merge_summaries(summary_files: list, output_path: Path, year: str, 
-                    prefer_4band: bool = True):
+def merge_summaries(summary_files: list, output_path: Path, year: str, prefer_4band: bool = True):
     """
-    Merge multiple summary JSON files into one year-level summary.
+    Merge multiple summary.json files, keeping best result per transect.
     
-    Handles duplicate TransectIDs by:
-    1. Preferring 4-band results over 3-band
-    2. If same band count, keeping higher confidence
-    
-    Args:
-        summary_files: List of summary file paths
-        output_path: Output path for merged summary
-        year: Year string
-        prefer_4band: If True, prefer 4-band results for duplicates
+    When prefer_4band=True, 4-band detections take precedence over 3-band.
     """
+    all_transects = {}  # TransectID -> best result
+    band_mode_counts = defaultdict(int)
+    
+    for sf in summary_files:
+        with open(sf) as f:
+            summary = json.load(f)
+        
+        for t in summary.get('transects', []):
+            tid = t['transect_id']
+            band_mode = t.get('band_mode', 'unknown')
+            
+            # Check if we should replace existing
+            if tid not in all_transects:
+                all_transects[tid] = t
+            elif prefer_4band:
+                existing_mode = all_transects[tid].get('band_mode', 'unknown')
+                # Replace if new is 4-band and existing is not
+                if band_mode == '4band' and existing_mode != '4band':
+                    all_transects[tid] = t
+                # Also replace if same mode but new has transitions and existing doesn't
+                elif band_mode == existing_mode:
+                    existing_trans = all_transects[tid].get('transitions', [])
+                    new_trans = t.get('transitions', [])
+                    if len(new_trans) > len(existing_trans):
+                        all_transects[tid] = t
+    
+    # Count final band modes
+    for t in all_transects.values():
+        mode = t.get('band_mode', 'unknown')
+        if '4band' in str(mode):
+            band_mode_counts['4band'] += 1
+        elif 'cir' in str(mode).lower():
+            band_mode_counts['3band_cir'] += 1
+        elif 'rgb' in str(mode).lower():
+            band_mode_counts['3band_rgb'] += 1
+        else:
+            band_mode_counts['3band'] += 1
+    
+    # Build merged summary
     merged = {
-        "metadata": {
-            "timestamp": datetime.now().isoformat(),
-            "year": year,
-            "source_summaries": [str(p.name) for p in summary_files],
-            "processing_info": {}
+        'metadata': {
+            'year': year,
+            'merged_from': len(summary_files),
+            'timestamp': datetime.now().isoformat()
         },
-        "transects": [],
-        "overall_class_distribution": defaultdict(int),
-        "total_transitions": 0,
-        "band_mode_summary": defaultdict(int)
+        'transects': sorted(all_transects.values(), key=lambda x: int(x['transect_id']) if str(x['transect_id']).isdigit() else 0),
+        'band_mode_summary': dict(band_mode_counts),
+        'total_transitions': sum(len(t.get('transitions', [])) for t in all_transects.values())
     }
     
-    # Track transects by ID to handle duplicates
-    transects_by_id = {}
-    transect_band_modes = {}  # Track band mode per transect
-    
-    for summary_file in summary_files:
-        with open(summary_file) as f:
-            data = json.load(f)
-        
-        # Get band mode from metadata if available
-        proc_info = data.get("metadata", {}).get("processing_info", {})
-        primary_band_mode = proc_info.get("primary_band_mode", "unknown")
-        
-        # Track source info
-        raster_dir = proc_info.get("raster_dir", "unknown")
-        merged["metadata"]["processing_info"][raster_dir] = {
-            "num_transects": data["metadata"].get("num_transects", 0),
-            "band_mode": primary_band_mode
-        }
-        
-        # Merge transects
-        for t in data.get("transects", []):
-            tid = t["transect_id"]
-            
-            # Determine if this result is from 4-band
-            # (We can infer from class distribution - 4-band has less UNKNOWN)
-            is_4band = primary_band_mode == '4band'
-            
-            if tid in transects_by_id:
-                existing = transects_by_id[tid]
-                existing_is_4band = transect_band_modes.get(tid, False)
-                
-                # Priority: 4-band > 3-band > lower confidence
-                should_replace = False
-                
-                if prefer_4band:
-                    if is_4band and not existing_is_4band:
-                        should_replace = True
-                    elif is_4band == existing_is_4band:
-                        # Same band mode - compare confidence
-                        existing_conf = max([tr["confidence"] for tr in existing["transitions"]], default=0)
-                        new_conf = max([tr["confidence"] for tr in t["transitions"]], default=0)
-                        if new_conf > existing_conf:
-                            should_replace = True
-                
-                if should_replace:
-                    transects_by_id[tid] = t
-                    transect_band_modes[tid] = is_4band
-            else:
-                transects_by_id[tid] = t
-                transect_band_modes[tid] = is_4band
-    
-    # Build final transect list (sorted by ID)
-    merged["transects"] = [
-        transects_by_id[tid] 
-        for tid in sorted(transects_by_id.keys(), key=lambda x: int(x) if x.isdigit() else 0)
-    ]
-    
-    # Recalculate overall stats
-    for t in merged["transects"]:
-        merged["total_transitions"] += t.get("num_transitions", 0)
-        for cls, count in t.get("class_distribution", {}).items():
-            merged["overall_class_distribution"][cls] += count
-    
-    # Band mode summary
-    for tid, is_4band in transect_band_modes.items():
-        mode = '4band' if is_4band else '3band'
-        merged["band_mode_summary"][mode] += 1
-    
-    # Convert defaultdicts to regular dicts for JSON
-    merged["overall_class_distribution"] = dict(merged["overall_class_distribution"])
-    merged["band_mode_summary"] = dict(merged["band_mode_summary"])
-    
-    # Write merged summary
     with open(output_path, 'w') as f:
         json.dump(merged, f, indent=2)
     
@@ -427,8 +327,27 @@ def merge_summaries(summary_files: list, output_path: Path, year: str,
     return output_path
 
 
-def export_shellline_geojson(summary_file: Path, transect_file: Path, output_file: Path):
-    """Convert summary.json transitions to a LineString GeoJSON."""
+def export_shellline_geojson(
+    summary_file: Path, 
+    transect_file: Path, 
+    output_file: Path, 
+    raster_paths: list = None,  # CHANGED: Now accepts list of all raster paths
+    edge_buffer_m: float = 25.0,
+    min_segment_length_m: float = 100.0
+):
+    """
+    Convert summary.json transitions to a LineString GeoJSON.
+    
+    Optionally clips to imagery footprint if raster_paths provided.
+    
+    Args:
+        summary_file: Path to merged summary JSON
+        transect_file: Path to transects GeoJSON
+        output_file: Path for output shellline GeoJSON
+        raster_paths: List of all raster file paths for footprint clipping (optional)
+        edge_buffer_m: Inward buffer from imagery edges (default 25m)
+        min_segment_length_m: Drop clipped segments shorter than this (default 100m)
+    """
     
     with open(summary_file) as f:
         summary = json.load(f)
@@ -487,7 +406,56 @@ def export_shellline_geojson(summary_file: Path, transect_file: Path, output_fil
     coords = [p["point"] for p in points_with_order]
     
     shoreline = LineString(coords)
+    original_length = shoreline.length
     avg_confidence = sum(p["confidence"] for p in points_with_order) / len(points_with_order)
+    
+    # === FOOTPRINT CLIPPING ===
+    num_segments = 1
+    clipped_length = original_length
+    
+    if raster_paths and len(raster_paths) > 0:
+        print(f"  Computing imagery footprint from {len(raster_paths)} rasters...")
+        
+        footprint_result = compute_merged_footprint(
+            raster_paths, 
+            edge_buffer_m=edge_buffer_m
+        )
+        
+        if footprint_result:
+            footprint, footprint_crs = footprint_result
+            
+            # Handle CRS mismatch by reprojecting footprint to match transects
+            if transects.crs != footprint_crs:
+                print(f"  Reprojecting footprint from {footprint_crs} to {transects.crs}...")
+                import pyproj
+                from shapely.ops import transform
+                
+                transformer = pyproj.Transformer.from_crs(
+                    footprint_crs, 
+                    transects.crs, 
+                    always_xy=True
+                )
+                footprint = transform(transformer.transform, footprint)
+            
+            # Clip shoreline to footprint
+            shoreline = clip_shoreline_to_footprint(
+                shoreline, 
+                footprint, 
+                min_segment_length_m=min_segment_length_m
+            )
+            
+            clipped_length = shoreline.length if not shoreline.is_empty else 0
+            
+            # Count segments
+            if isinstance(shoreline, MultiLineString):
+                num_segments = len(shoreline.geoms)
+            elif shoreline.is_empty:
+                num_segments = 0
+            else:
+                num_segments = 1
+            
+            print(f"  Clipped: {original_length/1000:.1f}km → {clipped_length/1000:.1f}km ({num_segments} segments)")
+    # === END FOOTPRINT CLIPPING ===
     
     # Include year and band mode from summary metadata
     year = summary.get("metadata", {}).get("year", "unknown")
@@ -499,7 +467,11 @@ def export_shellline_geojson(summary_file: Path, transect_file: Path, output_fil
         "num_points": len(coords),
         "avg_confidence": avg_confidence,
         "band_4_count": band_summary.get('4band', 0),
-        "band_3_count": band_summary.get('3band', 0)
+        "band_3_count": band_summary.get('3band', 0),
+        "original_length_m": original_length,
+        "clipped_length_m": clipped_length,
+        "num_segments": num_segments,
+        "edge_buffer_m": edge_buffer_m
     }], crs=transects.crs)
     
     gdf.to_file(output_file, driver="GeoJSON")
@@ -518,6 +490,7 @@ def main():
     print(f"Transect file: {TRANSECT_FILE}")
     print(f"Output root: {OUTPUT_ROOT}")
     print(f"Minimum bands: {MIN_BANDS}")
+    print(f"Edge buffer: {EDGE_BUFFER_M}m")
     print()
     
     # Verify paths exist
@@ -563,6 +536,9 @@ def main():
             return (0 if has_4band else 1, str(d))
         
         raster_dirs = sorted(raster_dirs, key=dir_priority)
+        
+        # *** COLLECT ALL RASTER PATHS FOR THIS YEAR ***
+        all_raster_paths_for_year = [r['path'] for r in raster_infos]
         
         # Track summary files created for this year
         date_summaries = []
@@ -636,9 +612,16 @@ def main():
             merged_summary = output_dir / f"summary_{year}.json"
             merge_summaries(date_summaries, merged_summary, year, prefer_4band=True)
             
-            # Export shellline from merged summary
+            # Export shellline from merged summary WITH footprint clipping
             shellline_file = output_dir / f"shellline_{year}.geojson"
-            export_shellline_geojson(merged_summary, TRANSECT_FILE, shellline_file)
+            export_shellline_geojson(
+                merged_summary, 
+                TRANSECT_FILE, 
+                shellline_file,
+                raster_paths=all_raster_paths_for_year,  # Pass ALL rasters for the year
+                edge_buffer_m=EDGE_BUFFER_M,
+                min_segment_length_m=MIN_SEGMENT_LENGTH_M
+            )
             
             # Generate diagnostic spectral profile plot
             if best_target_result:
