@@ -10,7 +10,10 @@ from typing import List, Dict, Optional
 import numpy as np
 import pandas as pd
 from .config import THRESHOLDS, EDGE_BUFFER_M
-from .data_io import BAND_CONFIG_4BAND, BAND_CONFIG_CIR, BAND_CONFIG_RGB
+from .data_io import (
+    BAND_CONFIG_4BAND, BAND_CONFIG_CIR, BAND_CONFIG_RGB,
+    detect_band_mode_from_dataframe
+)
 
 logger = logging.getLogger(__name__)
 
@@ -145,20 +148,7 @@ class TransitionDetector:
 
     def _detect_band_mode(self, features: pd.DataFrame) -> str:
         """Detect band mode from features DataFrame."""
-        # Check if band_mode column exists
-        if 'band_mode' in features.columns:
-            mode = features['band_mode'].iloc[0]
-            if pd.notna(mode):
-                return mode
-        
-        # Fallback: check NIR availability
-        if 'nir' in features.columns and not features['nir'].isna().all():
-            # Check if we also have blue
-            if 'blue' in features.columns and not features['blue'].isna().all():
-                return BAND_CONFIG_4BAND
-            else:
-                return BAND_CONFIG_CIR
-        return BAND_CONFIG_RGB
+        return detect_band_mode_from_dataframe(features)
 
     # ========================================================================
     # RGB-ONLY DETECTION METHODS
@@ -1350,5 +1340,22 @@ class TransitionDetector:
             elif boundary_types == 'waterline':
                 if 'dry_wet' in t_type or 'surf' in t_type:
                     filtered.append(t)
-                    
+
         return filtered
+
+    @staticmethod
+    def is_shore_boundary(transition: Dict) -> bool:
+        """
+        Check if a transition represents a shore boundary (shell line).
+
+        Shore boundaries are BEACH_DRY->BEACH_WET transitions detected
+        via the dry_wet_derivative method.
+
+        Args:
+            transition: Transition dictionary with 'type' key
+
+        Returns:
+            True if this is a shore boundary transition
+        """
+        t_type = transition.get('type', '')
+        return 'dry_wet' in t_type

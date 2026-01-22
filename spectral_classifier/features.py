@@ -12,7 +12,7 @@ import pandas as pd
 from scipy import signal
 from scipy.stats import linregress
 from .config import EPSILON, THRESHOLDS
-from .data_io import BAND_CONFIG_4BAND, BAND_CONFIG_CIR, BAND_CONFIG_RGB
+from .data_io import detect_band_mode_from_dataframe
 
 logger = logging.getLogger(__name__)
 
@@ -57,15 +57,7 @@ class SpectralFeatures:
 
     def _detect_band_mode(self) -> str:
         """Auto-detect band mode from data contents."""
-        has_nir = 'nir' in self.data.columns and not self.data['nir'].isna().all()
-        has_blue = 'blue' in self.data.columns and not self.data['blue'].isna().all()
-        
-        if has_nir and has_blue:
-            return BAND_CONFIG_4BAND
-        elif has_nir and not has_blue:
-            return BAND_CONFIG_CIR
-        else:
-            return BAND_CONFIG_RGB
+        return detect_band_mode_from_dataframe(self.data)
 
     def _check_nir_available(self) -> bool:
         """Check if NIR band has valid (non-NaN) values."""

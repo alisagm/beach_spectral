@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from scipy.ndimage import median_filter
 from .config import THRESHOLDS, LANDCOVER_CLASSES
-from .data_io import BAND_CONFIG_4BAND, BAND_CONFIG_CIR, BAND_CONFIG_RGB
+from .data_io import detect_band_mode_from_dataframe
 
 logger = logging.getLogger(__name__)
 
@@ -86,18 +86,7 @@ class LandcoverClassifier:
 
     def _detect_band_mode(self, features: pd.DataFrame) -> str:
         """Detect band mode from features DataFrame."""
-        if 'band_mode' in features.columns:
-            mode = features['band_mode'].iloc[0]
-            if pd.notna(mode):
-                return mode
-        
-        # Fallback: check NIR availability
-        if 'nir' in features.columns and not features['nir'].isna().all():
-            if 'blue' in features.columns and not features['blue'].isna().all():
-                return BAND_CONFIG_4BAND
-            else:
-                return BAND_CONFIG_CIR
-        return BAND_CONFIG_RGB
+        return detect_band_mode_from_dataframe(features)
 
     def _check_nir_available(self, features: pd.DataFrame) -> bool:
         """Check if NIR band has valid (non-NaN) values."""

@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 import geopandas as gpd
+import pandas as pd
 import numpy as np
 import rasterio
 from rasterio.crs import CRS
@@ -24,6 +25,35 @@ logger = logging.getLogger(__name__)
 BAND_CONFIG_4BAND = '4band'      # Standard RGBN (4 bands)
 BAND_CONFIG_CIR = 'cir'          # Color Infrared [NIR, Red, Green] stored as "RGB"
 BAND_CONFIG_RGB = 'rgb'          # True color [Red, Green, Blue]
+
+
+def detect_band_mode_from_dataframe(df: pd.DataFrame) -> str:
+    """
+    Detect band mode from a DataFrame containing spectral data or features.
+
+    Resolution order:
+    1. Use 'band_mode' column if present and valid
+    2. Check NIR and Blue band availability to infer mode
+
+    Args:
+        df: DataFrame with spectral data (may contain 'band_mode', 'nir', 'blue' columns)
+
+    Returns:
+        Band configuration string: '4band', 'cir', or 'rgb'
+    """
+    # Check if band_mode column exists
+    if 'band_mode' in df.columns:
+        mode = df['band_mode'].iloc[0]
+        if pd.notna(mode):
+            return mode
+
+    # Fallback: check NIR availability
+    if 'nir' in df.columns and not df['nir'].isna().all():
+        # Check if we also have blue
+        if 'blue' in df.columns and not df['blue'].isna().all():
+            return BAND_CONFIG_4BAND
+        return BAND_CONFIG_CIR
+    return BAND_CONFIG_RGB
 
 
 class RasterIndex:

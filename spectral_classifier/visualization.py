@@ -179,21 +179,6 @@ def _plot_spectral_bands(ax: plt.Axes, data: pd.DataFrame):
     )
 
 
-def _plot_centroid(ax: plt.Axes, data: pd.DataFrame):
-    """Plot centroid line (mean of all bands)."""
-    distance = data['distance']
-    centroid = data[['red', 'green', 'blue', 'nir']].mean(axis=1)
-
-    ax.plot(
-        distance,
-        centroid,
-        color='black',
-        linewidth=2,
-        label='Centroid',
-        alpha=0.6
-    )
-
-
 def _plot_nir_derivative(
     ax: plt.Axes,
     features: pd.DataFrame

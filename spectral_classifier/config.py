@@ -85,12 +85,6 @@ THRESHOLDS = {
     # Empirical: Water=-0.70+-0.11, WetBeach=-0.39+-0.13, DryBeach=-0.08+-0.03, VegDunes=-0.12+-0.05
     'ndvi_water_max': -0.50,            # Very negative for water
 
-    # Legacy thresholds (deprecated, kept for compatibility)
-    'land_brightness_min': 140,
-    'ocean_brightness_max': 120,
-    'land_variability_max': 15,
-    'nir_ratio_beach_min': 0.75,       # Replaced by nir_ratio_dry_min
-
     # Transition detection - derivative-based (optimized from validation)
     'nir_derivative_threshold': -4.38,  # Optimal NIR derivative threshold (units/m) from validation
     'derivative_sustainability_points': 3,  # Minimum consecutive points below threshold for sustained drop
@@ -206,10 +200,8 @@ THRESHOLDS = {
     'window_size': 7,            # Points for statistical features
     'smoothing_window': 3,       # Points for spatial filtering
 
-    # Sequence constraints for monotonic smoothing
+    # Sequence constraints
     # Note: Relaxed for transition-based approach (uses NIR derivatives for boundaries)
-    # PHASE 6D: Disable monotonic smoothing by default due to 93% UNKNOWN collapse
-    'enable_monotonic_smoothing': False,  # PHASE 6D: Disabled due to catastrophic class collapse
     'min_category_span_m': 2.5,  # Minimum distance span for each category (meters)
 }
 
