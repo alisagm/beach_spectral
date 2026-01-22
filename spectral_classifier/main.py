@@ -43,7 +43,8 @@ def analyze_all_transects(
     output_dir: Path,
     num_visualize: int = NUM_TRANSECTS_TO_VISUALIZE,
     verbose: bool = VERBOSE,
-    boundary_types: str = DEFAULT_BOUNDARY_TYPES
+    boundary_types: str = DEFAULT_BOUNDARY_TYPES,
+    band_config_override: str = None
 ) -> List[Dict]:
     """
     Main pipeline to analyze all transects.
@@ -77,11 +78,14 @@ def analyze_all_transects(
 
     # Step 1: Build raster spatial index (includes band configuration detection)
     logger.info("Step 1: Building raster spatial index...")
-    raster_index = build_raster_index(raster_dir)
+    raster_index = build_raster_index(raster_dir, band_config_override=band_config_override)
     
     # Log band configuration summary
     band_summary = raster_index.get_band_config_summary()
-    logger.info(f"Band configurations: {band_summary}")
+    if band_config_override:
+        logger.info(f"Band configurations (override={band_config_override}): {band_summary}")
+    else:
+        logger.info(f"Band configurations (auto-detected): {band_summary}")
     
     primary_mode = raster_index.get_primary_band_mode()
     logger.info(f"Primary band mode: {primary_mode}")

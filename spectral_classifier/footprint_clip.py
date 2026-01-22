@@ -1,9 +1,15 @@
 """
-Footprint-based shoreline clipping module.
+Footprint-based shoreline clipping module (v2).
 
 Clips shorelines to valid imagery coverage, with optional edge buffering.
-Handles nodata regions (black=0 or white=255) and creates merged footprints
-from multiple rasters.
+Handles nodata regions (black=0) and creates merged footprints from multiple rasters.
+
+Key improvements over v1:
+- MUCH faster: uses raster bounds by default, only does per-pixel analysis when needed
+- Smarter nodata: only treats pure black (0,0,0) as nodata by default
+- White nodata: only enabled if detected in image corners
+- Progress logging for batch processing
+- Minimum region size filter to avoid flagging small bright spots
 
 Usage:
     from footprint_clip import clip_shoreline_to_footprint, compute_merged_footprint
@@ -24,30 +30,97 @@ import shapely
 logger = logging.getLogger(__name__)
 
 
-def get_raster_valid_footprint(
-    raster_path: Path,
-    nodata_threshold: int = 5,
-    band_check: str = 'all'
-) -> Optional['shapely.geometry.Polygon']:
+def get_raster_bounds_footprint(raster_path: Path) -> Optional[Tuple['shapely.geometry.Polygon', any]]:
     """
-    Compute the valid data footprint for a single raster.
+    Get simple rectangular footprint from raster bounds (FAST).
     
-    Identifies nodata regions as pixels where all bands are either:
-    - Near black (all values < nodata_threshold)
-    - Near white (all values > 255 - nodata_threshold for 8-bit)
+    Use this when rasters are rectangular without significant nodata regions.
     
     Args:
         raster_path: Path to raster file
-        nodata_threshold: Tolerance for black/white detection (default 5)
-        band_check: 'all' requires all bands to be nodata, 'any' requires any band
         
     Returns:
-        Polygon of valid data extent, or None if no valid data
+        Tuple of (Polygon, CRS) or None if error
+    """
+    import rasterio
+    from shapely.geometry import box
+    
+    try:
+        with rasterio.open(raster_path) as src:
+            bounds = src.bounds
+            crs = src.crs
+            footprint = box(bounds.left, bounds.bottom, bounds.right, bounds.top)
+            return footprint, crs
+    except Exception as e:
+        logger.error(f"Error reading bounds from {raster_path}: {e}")
+        return None
+
+
+def check_corner_nodata(data: np.ndarray, corner_size: int = 50) -> dict:
+    """
+    Check corners of raster for nodata patterns.
+    
+    Returns dict with 'has_black_nodata' and 'has_white_nodata' flags.
+    """
+    h, w = data.shape[1], data.shape[2]
+    corner_size = min(corner_size, h // 4, w // 4)
+    
+    if corner_size < 10:
+        return {'has_black_nodata': False, 'has_white_nodata': False}
+    
+    # Sample corners
+    corners = [
+        data[:, :corner_size, :corner_size],           # top-left
+        data[:, :corner_size, -corner_size:],          # top-right
+        data[:, -corner_size:, :corner_size],          # bottom-left
+        data[:, -corner_size:, -corner_size:],         # bottom-right
+    ]
+    
+    has_black = False
+    has_white = False
+    
+    for corner in corners:
+        # Check if corner has significant black (all bands = 0)
+        black_mask = np.all(corner == 0, axis=0)
+        if np.mean(black_mask) > 0.5:  # >50% of corner is black
+            has_black = True
+        
+        # Check if corner has significant white (all bands = 255)
+        white_mask = np.all(corner == 255, axis=0)
+        if np.mean(white_mask) > 0.5:  # >50% of corner is white
+            has_white = True
+    
+    return {'has_black_nodata': has_black, 'has_white_nodata': has_white}
+
+
+def get_raster_valid_footprint(
+    raster_path: Path,
+    check_nodata: bool = True,
+    min_nodata_region_pixels: int = 10000
+) -> Optional[Tuple['shapely.geometry.Polygon', any]]:
+    """
+    Compute the valid data footprint for a single raster.
+    
+    Identifies nodata regions as:
+    - Pure black pixels (all bands = 0) - always checked
+    - Pure white pixels (all bands = 255) - only if detected in corners
+    
+    Args:
+        raster_path: Path to raster file
+        check_nodata: If False, just return rectangular bounds (fast mode)
+        min_nodata_region_pixels: Ignore nodata regions smaller than this
+        
+    Returns:
+        Tuple of (Polygon, CRS) of valid data extent, or None if error
     """
     import rasterio
     from rasterio import features
-    from shapely.geometry import shape, MultiPolygon
+    from shapely.geometry import shape, box
     from shapely.ops import unary_union
+    
+    # Fast mode: just use bounds
+    if not check_nodata:
+        return get_raster_bounds_footprint(raster_path)
     
     try:
         with rasterio.open(raster_path) as src:
@@ -55,59 +128,72 @@ def get_raster_valid_footprint(
             data = src.read()  # Shape: (bands, height, width)
             transform = src.transform
             crs = src.crs
+            bounds = src.bounds
             
-            num_bands = data.shape[0]
+            # Check corners to determine nodata type
+            corner_check = check_corner_nodata(data)
             
-            # Determine bit depth from dtype
-            if data.dtype == np.uint8:
-                max_val = 255
-            elif data.dtype == np.uint16:
-                max_val = 65535
-            else:
-                max_val = 255  # Assume 8-bit
+            # If no corner nodata detected, use simple bounds
+            if not corner_check['has_black_nodata'] and not corner_check['has_white_nodata']:
+                logger.debug(f"{raster_path.name}: No corner nodata, using bounds")
+                footprint = box(bounds.left, bounds.bottom, bounds.right, bounds.top)
+                return footprint, crs
             
-            # Create mask: True = valid data, False = nodata
-            # Nodata is where ALL bands are near black OR ALL bands are near white
-            near_black = np.all(data < nodata_threshold, axis=0)
-            near_white = np.all(data > (max_val - nodata_threshold), axis=0)
-            nodata_mask = near_black | near_white
+            # Build nodata mask
+            # Always check for pure black
+            nodata_mask = np.all(data == 0, axis=0)
+            
+            # Only check for pure white if detected in corners
+            if corner_check['has_white_nodata']:
+                white_mask = np.all(data == 255, axis=0)
+                nodata_mask = nodata_mask | white_mask
+                logger.debug(f"{raster_path.name}: Detected white nodata in corners")
+            
             valid_mask = ~nodata_mask
             
-            # If no valid data, return None
-            if not np.any(valid_mask):
-                logger.warning(f"No valid data in {raster_path.name}")
-                return None
-            
-            # Convert mask to uint8 for vectorization
-            valid_uint8 = valid_mask.astype(np.uint8)
+            # If almost all valid, use simple bounds
+            valid_ratio = np.mean(valid_mask)
+            if valid_ratio > 0.98:
+                logger.debug(f"{raster_path.name}: {valid_ratio:.1%} valid, using bounds")
+                footprint = box(bounds.left, bounds.bottom, bounds.right, bounds.top)
+                return footprint, crs
             
             # Vectorize the valid data regions
+            valid_uint8 = valid_mask.astype(np.uint8)
+            
             shapes_gen = features.shapes(
                 valid_uint8,
                 mask=valid_mask,
                 transform=transform
             )
             
-            # Collect all valid polygons (value == 1)
+            # Collect polygons, filtering small regions
             polygons = []
             for geom, value in shapes_gen:
                 if value == 1:
-                    polygons.append(shape(geom))
+                    poly = shape(geom)
+                    # Rough pixel count estimate
+                    pixel_area = abs(transform.a * transform.e)  # pixel size in CRS units
+                    region_pixels = poly.area / pixel_area if pixel_area > 0 else float('inf')
+                    
+                    if region_pixels >= min_nodata_region_pixels:
+                        polygons.append(poly)
             
             if not polygons:
-                logger.warning(f"No polygons extracted from {raster_path.name}")
-                return None
+                logger.warning(f"No valid polygons from {raster_path.name}, using bounds")
+                footprint = box(bounds.left, bounds.bottom, bounds.right, bounds.top)
+                return footprint, crs
             
-            # Union all polygons into single geometry
+            # Union all polygons
             if len(polygons) == 1:
                 footprint = polygons[0]
             else:
                 footprint = unary_union(polygons)
             
-            # Simplify slightly to reduce vertex count (tolerance in CRS units)
+            # Simplify to reduce vertex count
             footprint = footprint.simplify(1.0, preserve_topology=True)
             
-            logger.debug(f"Footprint for {raster_path.name}: {footprint.geom_type}, area={footprint.area:.0f}")
+            logger.debug(f"{raster_path.name}: {valid_ratio:.1%} valid, {footprint.geom_type}")
             
             return footprint, crs
             
@@ -119,7 +205,8 @@ def get_raster_valid_footprint(
 def compute_merged_footprint(
     raster_paths: List[Path],
     edge_buffer_m: float = 25.0,
-    nodata_threshold: int = 5
+    fast_mode: bool = True,
+    progress_interval: int = 10
 ) -> Optional[Tuple['shapely.geometry.base.BaseGeometry', any]]:
     """
     Compute merged valid-data footprint from multiple rasters.
@@ -130,7 +217,8 @@ def compute_merged_footprint(
     Args:
         raster_paths: List of paths to raster files
         edge_buffer_m: Inward buffer distance in meters (default 25)
-        nodata_threshold: Tolerance for nodata detection
+        fast_mode: If True, use bounds-only for speed (default True)
+        progress_interval: Log progress every N rasters
         
     Returns:
         Tuple of (buffered_footprint, crs) or None if no valid rasters
@@ -139,12 +227,20 @@ def compute_merged_footprint(
     
     footprints = []
     crs = None
+    total = len(raster_paths)
     
-    for raster_path in raster_paths:
-        result = get_raster_valid_footprint(
-            Path(raster_path),
-            nodata_threshold=nodata_threshold
-        )
+    logger.info(f"Computing footprints for {total} rasters (fast_mode={fast_mode})...")
+    
+    for i, raster_path in enumerate(raster_paths):
+        # Progress logging
+        if (i + 1) % progress_interval == 0 or (i + 1) == total:
+            logger.info(f"  Processing raster {i+1}/{total}: {Path(raster_path).name}")
+        
+        if fast_mode:
+            result = get_raster_bounds_footprint(Path(raster_path))
+        else:
+            result = get_raster_valid_footprint(Path(raster_path), check_nodata=True)
+        
         if result is not None:
             footprint, raster_crs = result
             footprints.append(footprint)
@@ -155,7 +251,7 @@ def compute_merged_footprint(
         logger.error("No valid footprints computed from rasters")
         return None
     
-    logger.info(f"Merging {len(footprints)} raster footprints...")
+    logger.info(f"Merging {len(footprints)} footprints...")
     
     # Union all footprints - this merges adjacent tiles seamlessly
     merged = unary_union(footprints)
@@ -166,10 +262,9 @@ def compute_merged_footprint(
     if edge_buffer_m > 0:
         buffered = merged.buffer(-edge_buffer_m)
         
-        # buffer() can return empty geometry if buffer is too large
         if buffered.is_empty:
             logger.warning(f"Edge buffer of {edge_buffer_m}m eliminated all coverage!")
-            return merged, crs  # Return unbuffered
+            return merged, crs
         
         logger.info(f"Applied {edge_buffer_m}m edge buffer, area now {buffered.area/1e6:.2f} km²")
         return buffered, crs
@@ -217,7 +312,6 @@ def clip_shoreline_to_footprint(
     
     # Filter out short segments if result is MultiLineString
     if isinstance(clipped, MultiLineString):
-        # Keep only segments longer than minimum
         valid_segments = [
             geom for geom in clipped.geoms 
             if geom.length >= min_segment_length_m
@@ -251,20 +345,9 @@ def analyze_coverage_gaps(
 ) -> dict:
     """
     Analyze gaps between shoreline and imagery coverage.
-    
-    Returns statistics about where the shoreline falls outside coverage.
-    Useful for diagnostics.
-    
-    Args:
-        shoreline: Input shoreline geometry
-        footprint: Valid imagery footprint polygon
-        
-    Returns:
-        Dictionary with gap statistics
     """
     from shapely.geometry import MultiLineString
     
-    # Find parts of shoreline outside footprint
     outside = shoreline.difference(footprint)
     
     if outside.is_empty:
@@ -275,7 +358,6 @@ def analyze_coverage_gaps(
             'gaps': []
         }
     
-    # Collect gap info
     gaps = []
     if isinstance(outside, MultiLineString):
         for i, geom in enumerate(outside.geoms):
@@ -302,112 +384,7 @@ def analyze_coverage_gaps(
 
 
 # =============================================================================
-# Convenience function for batch processing
-# =============================================================================
-
-def clip_shellline_to_year_coverage(
-    shellline_geojson: Path,
-    raster_dir: Path,
-    output_geojson: Path,
-    edge_buffer_m: float = 25.0,
-    min_segment_length_m: float = 100.0,
-    raster_extensions: tuple = ('.tif', '.tiff')
-) -> dict:
-    """
-    Clip an existing shellline GeoJSON to the coverage of rasters in a directory.
-    
-    Main entry point for post-processing existing shellline outputs.
-    
-    Args:
-        shellline_geojson: Path to input shellline GeoJSON
-        raster_dir: Directory containing rasters for this year
-        output_geojson: Path for clipped output
-        edge_buffer_m: Inward buffer from imagery edges
-        min_segment_length_m: Drop segments shorter than this
-        raster_extensions: File extensions to look for
-        
-    Returns:
-        Dictionary with processing statistics
-    """
-    import geopandas as gpd
-    from shapely.geometry import mapping
-    
-    # Find rasters
-    raster_paths = []
-    for ext in raster_extensions:
-        raster_paths.extend(raster_dir.glob(f'*{ext}'))
-    
-    if not raster_paths:
-        raise ValueError(f"No rasters found in {raster_dir}")
-    
-    logger.info(f"Found {len(raster_paths)} rasters in {raster_dir}")
-    
-    # Load shellline
-    gdf = gpd.read_file(shellline_geojson)
-    if len(gdf) == 0:
-        raise ValueError(f"No features in {shellline_geojson}")
-    
-    original_geom = gdf.geometry.iloc[0]
-    original_length = original_geom.length
-    
-    # Compute merged footprint
-    result = compute_merged_footprint(
-        raster_paths,
-        edge_buffer_m=edge_buffer_m
-    )
-    
-    if result is None:
-        raise ValueError("Failed to compute imagery footprint")
-    
-    footprint, footprint_crs = result
-    
-    # Check CRS compatibility
-    if gdf.crs != footprint_crs:
-        logger.warning(f"CRS mismatch: shellline={gdf.crs}, footprint={footprint_crs}")
-        # Could reproject here if needed
-    
-    # Analyze gaps before clipping
-    gap_analysis = analyze_coverage_gaps(original_geom, footprint)
-    
-    # Clip shoreline
-    clipped = clip_shoreline_to_footprint(
-        original_geom,
-        footprint,
-        min_segment_length_m=min_segment_length_m
-    )
-    
-    # Prepare output
-    output_data = gdf.iloc[0].to_dict()
-    output_data['geometry'] = clipped
-    output_data['original_length_m'] = original_length
-    output_data['clipped_length_m'] = clipped.length if not clipped.is_empty else 0
-    output_data['edge_buffer_m'] = edge_buffer_m
-    
-    # Count segments
-    from shapely.geometry import MultiLineString
-    if isinstance(clipped, MultiLineString):
-        output_data['num_segments'] = len(clipped.geoms)
-    else:
-        output_data['num_segments'] = 1 if not clipped.is_empty else 0
-    
-    # Create output GeoDataFrame
-    out_gdf = gpd.GeoDataFrame([output_data], crs=gdf.crs)
-    out_gdf.to_file(output_geojson, driver='GeoJSON')
-    
-    logger.info(f"Saved clipped shellline to {output_geojson}")
-    
-    return {
-        'original_length_m': original_length,
-        'clipped_length_m': clipped.length if not clipped.is_empty else 0,
-        'num_segments': output_data['num_segments'],
-        'num_rasters': len(raster_paths),
-        'edge_buffer_m': edge_buffer_m,
-        'gap_analysis': gap_analysis
-    }
-
-
-# =============================================================================
-# Testing / Demo
+# CLI for testing
 # =============================================================================
 
 if __name__ == '__main__':
@@ -416,30 +393,68 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     
     if len(sys.argv) < 4:
-        print("Usage: python footprint_clip.py <shellline.geojson> <raster_dir> <output.geojson> [buffer_m]")
+        print("Usage: python footprint_clip.py <shellline.geojson> <raster_dir> <output.geojson> [buffer_m] [--slow]")
+        print("\nOptions:")
+        print("  buffer_m   Edge buffer in meters (default: 25)")
+        print("  --slow     Use per-pixel nodata detection instead of fast bounds mode")
         print("\nExample:")
         print("  python footprint_clip.py shellline_1995.geojson imagery/19950102/ shellline_1995_clipped.geojson 25")
         sys.exit(1)
     
+    import geopandas as gpd
+    
     shellline_path = Path(sys.argv[1])
     raster_dir = Path(sys.argv[2])
     output_path = Path(sys.argv[3])
-    buffer_m = float(sys.argv[4]) if len(sys.argv) > 4 else 25.0
+    buffer_m = float(sys.argv[4]) if len(sys.argv) > 4 and not sys.argv[4].startswith('--') else 25.0
+    fast_mode = '--slow' not in sys.argv
     
-    result = clip_shellline_to_year_coverage(
-        shellline_path,
-        raster_dir,
-        output_path,
-        edge_buffer_m=buffer_m
-    )
+    # Find rasters
+    raster_paths = list(raster_dir.glob('*.tif')) + list(raster_dir.glob('*.tiff'))
+    print(f"Found {len(raster_paths)} rasters")
     
-    print("\n=== Results ===")
-    print(f"Original length: {result['original_length_m']/1000:.2f} km")
-    print(f"Clipped length:  {result['clipped_length_m']/1000:.2f} km")
-    print(f"Segments:        {result['num_segments']}")
-    print(f"Rasters used:    {result['num_rasters']}")
+    # Load shellline
+    gdf = gpd.read_file(shellline_path)
+    original_geom = gdf.geometry.iloc[0]
     
-    if result['gap_analysis']['has_gaps']:
-        print(f"\nGaps outside coverage:")
-        for gap in result['gap_analysis']['gaps']:
-            print(f"  Gap {gap['index']}: {gap['length_m']:.0f}m")
+    # Compute footprint
+    result = compute_merged_footprint(raster_paths, edge_buffer_m=buffer_m, fast_mode=fast_mode)
+    
+    if result is None:
+        print("ERROR: Failed to compute footprint")
+        sys.exit(1)
+    
+    footprint, footprint_crs = result
+    
+    # Handle CRS mismatch
+    if gdf.crs != footprint_crs:
+        print(f"Reprojecting footprint from {footprint_crs} to {gdf.crs}...")
+        import pyproj
+        from shapely.ops import transform
+        transformer = pyproj.Transformer.from_crs(footprint_crs, gdf.crs, always_xy=True)
+        footprint = transform(transformer.transform, footprint)
+    
+    # Clip
+    clipped = clip_shoreline_to_footprint(original_geom, footprint)
+    
+    # Save
+    from shapely.geometry import MultiLineString
+    output_data = gdf.iloc[0].to_dict()
+    output_data['geometry'] = clipped
+    output_data['original_length_m'] = original_geom.length
+    output_data['clipped_length_m'] = clipped.length if not clipped.is_empty else 0
+    
+    if isinstance(clipped, MultiLineString):
+        output_data['num_segments'] = len(clipped.geoms)
+    else:
+        output_data['num_segments'] = 1 if not clipped.is_empty else 0
+    
+    out_gdf = gpd.GeoDataFrame([output_data], crs=gdf.crs)
+    out_gdf.to_file(output_path, driver='GeoJSON')
+    
+    print(f"\n=== Results ===")
+    print(f"Original length: {original_geom.length/1000:.2f} km")
+    print(f"Clipped length:  {output_data['clipped_length_m']/1000:.2f} km")
+    print(f"Segments:        {output_data['num_segments']}")
+    print(f"Mode:            {'fast (bounds)' if fast_mode else 'slow (per-pixel)'}")
+    print(f"Saved to:        {output_path}")

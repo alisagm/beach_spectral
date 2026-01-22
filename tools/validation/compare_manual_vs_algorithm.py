@@ -38,10 +38,10 @@ ALGORITHM_OUTPUT_ROOT = Path(r"C:\Users\alisa\Desktop\SIP\git\beach_spectral\OUT
 
 TRANSECT_FILE = Path(r"C:\Users\alisa\Desktop\SIP\git\beach_spectral\INPUT\shorelineTransPais.json")
 
-OUTPUT_DIR = Path(r"C:\Users\alisa\Desktop\SIP\git\beach_spectral\validation_outputs\manual_comparison")
+OUTPUT_DIR = Path(r"C:\Users\alisa\Desktop\SIP\git\beach_spectral\validation\manual_comparison")
 
 # Years to compare (must exist in both manual and algorithm outputs)
-YEARS = ["1995", "2004", "2010", "2016", "2020", "2022"]  # Start with years that have NAIP imagery
+YEARS = ["1995", "2004", "2010", "2016", "2020", "2022"] 
 
 # Maximum distance to consider a valid intersection (meters)
 MAX_INTERSECTION_DISTANCE = 50.0  # If shoreline doesn't cross transect within this buffer, skip
@@ -51,6 +51,45 @@ DIAGNOSTIC_TRANSECT_ID = 1000
 
 
 # === HELPER FUNCTIONS ===
+
+def count_vertices(geom) -> int:
+    """
+    Count total vertices in a LineString or MultiLineString.
+    
+    Args:
+        geom: LineString or MultiLineString geometry
+        
+    Returns:
+        Total number of coordinate vertices
+    """
+    if geom is None or geom.is_empty:
+        return 0
+    
+    if isinstance(geom, MultiLineString):
+        return sum(len(part.coords) for part in geom.geoms)
+    elif isinstance(geom, LineString):
+        return len(geom.coords)
+    else:
+        return 0
+
+
+def count_segments(geom) -> int:
+    """
+    Count number of segments (parts) in a geometry.
+    
+    Returns:
+        1 for LineString, N for MultiLineString with N parts, 0 for empty/invalid
+    """
+    if geom is None or geom.is_empty:
+        return 0
+    
+    if isinstance(geom, MultiLineString):
+        return len(geom.geoms)
+    elif isinstance(geom, LineString):
+        return 1
+    else:
+        return 0
+
 
 def load_manual_shorelines(shapefile_dir: Path, base_name: str) -> gpd.GeoDataFrame:
     """
@@ -734,8 +773,8 @@ def main():
             algo_gdf = algo_gdf.to_crs(transects.crs)
             algo_shoreline = algo_gdf.geometry.iloc[0]
         
-        print(f"  Manual shoreline: {manual_shoreline.geom_type} with {len(manual_shoreline.coords)} vertices")
-        print(f"  Algorithm shoreline: {algo_shoreline.geom_type} with {len(algo_shoreline.coords)} vertices")
+        print(f"  Manual shoreline: {manual_shoreline.geom_type} with {count_vertices(manual_shoreline)} vertices")
+        print(f"  Algorithm shoreline: {algo_shoreline.geom_type} ({count_segments(algo_shoreline)} segments, {count_vertices(algo_shoreline)} vertices)")
         
         # Compare shorelines
         print(f"  Comparing {len(transects)} transects...")

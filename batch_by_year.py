@@ -48,6 +48,7 @@ MIN_BANDS = 3
 # Footprint clipping settings
 EDGE_BUFFER_M = 25.0  # Buffer inward from imagery edges
 MIN_SEGMENT_LENGTH_M = 100.0  # Drop segments shorter than this
+FOOTPRINT_FAST_MODE = True  # Use bounds-only mode (MUCH faster, recommended)
 
 
 # === HELPER FUNCTIONS ===
@@ -57,9 +58,9 @@ def extract_year_from_path(path: Path) -> str:
     Extract year from path like 'imagery/2016/20160122/file.tif' or 'imagery/200605/file.tif'
     
     Handles:
-        - 4 digits: YYYY (e.g., '2016' → '2016')
-        - 6 digits: YYYYMM (e.g., '200605' → '2006')
-        - 8 digits: YYYYMMDD (e.g., '20160122' → '2016')
+        - 4 digits: YYYY (e.g., '2016' â†’ '2016')
+        - 6 digits: YYYYMM (e.g., '200605' â†’ '2006')
+        - 8 digits: YYYYMMDD (e.g., '20160122' â†’ '2016')
     """
     for part in path.parts:
         # Check for 4-digit year (YYYY)
@@ -94,9 +95,14 @@ def classify_raster(path: Path) -> dict:
     """
     Classify a raster by band count and infer band mode.
     
+    For 3-band imagery, runs variance-based detection to distinguish CIR from RGB.
+    This classification is used for year-level majority voting.
+    
     Returns:
         Dict with keys: 'path', 'band_count', 'band_mode', 'year', 'error'
     """
+    from spectral_classifier.data_io import detect_band_configuration
+    
     band_count, error = get_band_count_safe(path)
     
     if error:
@@ -112,8 +118,12 @@ def classify_raster(path: Path) -> dict:
     if band_count >= 4:
         band_mode = BAND_CONFIG_4BAND
     elif band_count == 3:
-        # Will be auto-detected as CIR or RGB by data_io.detect_band_configuration
-        band_mode = '3band'  # Placeholder - actual detection happens later
+        # Run variance-based detection for year-level voting
+        try:
+            band_mode = detect_band_configuration(path)
+        except Exception as e:
+            # Default to CIR if detection fails (user prefers CIR)
+            band_mode = BAND_CONFIG_CIR
     else:
         band_mode = None  # Insufficient bands
     
@@ -188,6 +198,77 @@ def group_rasters_by_year(imagery_root: Path, include_optional: bool = True) -> 
         print(f"  Skip reasons: {dict(skip_reasons)}")
     
     return dict(by_year)
+
+
+def resolve_year_band_config(raster_infos: list) -> str:
+    """
+    Determine a single, consistent band configuration for all tiles in a year.
+    
+    Resolution strategy:
+    1. If ALL tiles are 4-band → return '4band'
+    2. Check filename patterns for explicit hints ('_cir_', '_rgb_')
+    3. Fall back to majority vote of variance-based classifications
+    4. In case of tie, prefer 'cir' (user pre-selected CIR when available)
+    
+    Args:
+        raster_infos: List of raster info dicts with 'path', 'band_count', 'band_mode'
+        
+    Returns:
+        Resolved band config: '4band', 'cir', or 'rgb'
+    """
+    if not raster_infos:
+        return BAND_CONFIG_RGB
+    
+    # Check if all 4-band (no ambiguity)
+    if all(r['band_count'] >= 4 for r in raster_infos):
+        return BAND_CONFIG_4BAND
+    
+    # Focus on 3-band tiles only
+    three_band_infos = [r for r in raster_infos if r['band_count'] == 3]
+    
+    if not three_band_infos:
+        # Only 4-band tiles exist
+        return BAND_CONFIG_4BAND
+    
+    # Strategy 1: Check filenames for explicit hints
+    cir_hints = 0
+    rgb_hints = 0
+    
+    for r in three_band_infos:
+        filename = r['path'].name.lower()
+        # Common CIR filename patterns
+        if '_cir_' in filename or '_cir.' in filename or '-cir-' in filename or '-cir.' in filename:
+            cir_hints += 1
+        # Common RGB filename patterns  
+        elif '_rgb_' in filename or '_rgb.' in filename or '-rgb-' in filename or '-rgb.' in filename:
+            rgb_hints += 1
+    
+    # If filename hints are decisive, use them
+    if cir_hints > 0 and rgb_hints == 0:
+        print(f"    Band config: CIR (filename hint from {cir_hints} tiles)")
+        return BAND_CONFIG_CIR
+    if rgb_hints > 0 and cir_hints == 0:
+        print(f"    Band config: RGB (filename hint from {rgb_hints} tiles)")
+        return BAND_CONFIG_RGB
+    
+    # Strategy 2: Use majority vote from variance-based detection
+    # (band_mode was set by classify_raster using detect_band_configuration)
+    cir_count = sum(1 for r in three_band_infos if r.get('band_mode') == BAND_CONFIG_CIR)
+    rgb_count = sum(1 for r in three_band_infos if r.get('band_mode') == BAND_CONFIG_RGB)
+    other_count = len(three_band_infos) - cir_count - rgb_count
+    
+    total = len(three_band_infos)
+    
+    if cir_count > rgb_count:
+        print(f"    Band config: CIR (majority vote: {cir_count}/{total} tiles)")
+        return BAND_CONFIG_CIR
+    elif rgb_count > cir_count:
+        print(f"    Band config: RGB (majority vote: {rgb_count}/{total} tiles)")
+        return BAND_CONFIG_RGB
+    else:
+        # Tie - prefer CIR per user preference
+        print(f"    Band config: CIR (tie-breaker: {cir_count} CIR vs {rgb_count} RGB)")
+        return BAND_CONFIG_CIR
 
 
 def find_nearest_transect(results: list, target_id: int) -> dict:
@@ -418,7 +499,8 @@ def export_shellline_geojson(
         
         footprint_result = compute_merged_footprint(
             raster_paths, 
-            edge_buffer_m=edge_buffer_m
+            edge_buffer_m=edge_buffer_m,
+            fast_mode=True  # Use bounds-only for speed
         )
         
         if footprint_result:
@@ -454,7 +536,7 @@ def export_shellline_geojson(
             else:
                 num_segments = 1
             
-            print(f"  Clipped: {original_length/1000:.1f}km → {clipped_length/1000:.1f}km ({num_segments} segments)")
+            print(f"  Clipped: {original_length/1000:.1f}km â†’ {clipped_length/1000:.1f}km ({num_segments} segments)")
     # === END FOOTPRINT CLIPPING ===
     
     # Include year and band mode from summary metadata
@@ -540,6 +622,14 @@ def main():
         # *** COLLECT ALL RASTER PATHS FOR THIS YEAR ***
         all_raster_paths_for_year = [r['path'] for r in raster_infos]
         
+        # *** RESOLVE YEAR-LEVEL BAND CONFIG ***
+        # This ensures all tiles in a year use the same band interpretation,
+        # preventing mid-transect band switching when crossing tile boundaries
+        year_band_config = resolve_year_band_config(raster_infos)
+        
+        # Only pass override for 3-band years (4-band doesn't need override)
+        band_override = year_band_config if year_band_config != BAND_CONFIG_4BAND else None
+        
         # Track summary files created for this year
         date_summaries = []
         
@@ -565,7 +655,8 @@ def main():
                     output_dir=output_dir,
                     num_visualize=0,  # Skip plots for batch
                     verbose=False,
-                    boundary_types='shore_only'
+                    boundary_types='shore_only',
+                    band_config_override=band_override  # Year-level consistency
                 )
                 print(f"    Processed {len(results)} transects")
                 

@@ -90,8 +90,8 @@ def detect_band_configuration(raster_path: Path, sample_size: int = None) -> str
     - In RGB imagery, Band 1 (Red) has similar or lower variance than Band 2 (Green)
     
     Empirical observation from PAIS imagery:
-    - CIR: Band1_StdDev / Band2_StdDev ≈ 1.14 (NIR more variable)
-    - RGB: Band1_StdDev / Band2_StdDev ≈ 0.97 (Red less variable than Green)
+    - CIR: Band1_StdDev / Band2_StdDev â‰ˆ 1.14 (NIR more variable)
+    - RGB: Band1_StdDev / Band2_StdDev â‰ˆ 0.97 (Red less variable than Green)
     
     Args:
         raster_path: Path to raster file
@@ -160,8 +160,8 @@ def detect_band_configuration(raster_path: Path, sample_size: int = None) -> str
         variance_ratio = band1_std / (band2_std + 1e-6)
         
         # Heuristic threshold from config
-        # CIR: NIR (band1) has higher variance than Red (band2) → ratio > threshold
-        # RGB: Red (band1) has similar/lower variance than Green (band2) → ratio ≤ threshold
+        # CIR: NIR (band1) has higher variance than Red (band2) â†’ ratio > threshold
+        # RGB: Red (band1) has similar/lower variance than Green (band2) â†’ ratio â‰¤ threshold
         
         if variance_ratio > cir_threshold:
             detected = BAND_CONFIG_CIR
@@ -170,7 +170,7 @@ def detect_band_configuration(raster_path: Path, sample_size: int = None) -> str
         else:
             detected = BAND_CONFIG_RGB
             logger.info(f"Detected RGB imagery: {raster_path.name} "
-                       f"(Band1/Band2 StdDev ratio = {variance_ratio:.3f} ≤ {cir_threshold})")
+                       f"(Band1/Band2 StdDev ratio = {variance_ratio:.3f} â‰¤ {cir_threshold})")
         
         return detected
 
@@ -179,7 +179,8 @@ def build_raster_index(
     raster_dir: Path, 
     require_nir: bool = False,  # Changed default to False for 3-band support
     recursive: bool = False,
-    detect_bands: bool = True
+    detect_bands: bool = True,
+    band_config_override: str = None
 ) -> RasterIndex:
     """
     Build spatial index of all supported raster files in directory.
@@ -189,6 +190,9 @@ def build_raster_index(
         require_nir: If True, skip files without 4 bands. If False, include 3-band files.
         recursive: If True, scan subdirectories recursively.
         detect_bands: If True, detect band configuration (CIR vs RGB) for 3-band files.
+        band_config_override: If provided, use this config for ALL 3-band rasters instead
+            of per-tile detection. Valid values: 'cir', 'rgb'. 4-band rasters always
+            use '4band' regardless of override.
 
     Returns:
         RasterIndex object with spatial metadata and band configurations
@@ -274,18 +278,25 @@ def build_raster_index(
                 # Valid raster - store metadata
                 valid_paths.append(raster_path)
                 
-                # Detect band configuration
-                if detect_bands:
+                # Determine band configuration
+                if src.count >= 4:
+                    # 4-band is always RGBN regardless of override
+                    band_configs[raster_path] = BAND_CONFIG_4BAND
+                elif band_config_override is not None:
+                    # 3-band with year-level override - use override instead of per-tile detection
+                    band_configs[raster_path] = band_config_override
+                    logger.debug(f"Using override band config '{band_config_override}' for {raster_path.name}")
+                elif detect_bands:
+                    # 3-band without override - detect per-tile
                     try:
                         band_config = detect_band_configuration(raster_path)
                         band_configs[raster_path] = band_config
                     except Exception as e:
                         logger.warning(f"Could not detect band config for {raster_path.name}: {e}")
-                        # Default based on band count
-                        band_configs[raster_path] = BAND_CONFIG_4BAND if src.count >= 4 else BAND_CONFIG_RGB
+                        band_configs[raster_path] = BAND_CONFIG_RGB
                 else:
-                    # Default based on band count
-                    band_configs[raster_path] = BAND_CONFIG_4BAND if src.count >= 4 else BAND_CONFIG_RGB
+                    # No detection, no override - default to RGB
+                    band_configs[raster_path] = BAND_CONFIG_RGB
                 
         except Exception as e:
             skipped[raster_path] = f"Read error: {e}"
