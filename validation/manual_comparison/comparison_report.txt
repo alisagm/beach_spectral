@@ -1,6 +1,6 @@
 MANUAL vs ALGORITHM SHORELINE COMPARISON
 ============================================================
-Generated: 2026-01-22 09:14:14.383640
+Generated: 2026-01-22 15:07:35.073972
 
 Manual shorelines: C:\Users\alisa\Desktop\SIP\git\beach_spectral\PAIS_shorelines\features\PAIS_shoreline.shp
 Algorithm outputs: C:\Users\alisa\Desktop\SIP\git\beach_spectral\OUTPUT

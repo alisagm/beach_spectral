@@ -18,6 +18,7 @@ from pathlib import Path
 from collections import defaultdict
 from datetime import datetime
 import geopandas as gpd
+import pandas as pd
 from shapely.geometry import LineString, MultiLineString
 import matplotlib.pyplot as plt
 import rasterio
@@ -74,6 +75,42 @@ def extract_year_from_path(path: Path) -> str:
             return part[:4]
     return "unknown"
 
+def extract_capture_date_from_path(path: Path) -> str:
+    """
+    Extract capture date from path with best available precision.
+    
+    Returns:
+        - 'YYYYMM' if month info available (from YYYYMM or YYYYMMDD folders)
+        - 'YYYY' if only year available
+        - 'unknown' if no date found
+    
+    Examples:
+        'imagery/2016/20160122/file.tif' → '201601'
+        'imagery/200605/file.tif' → '200605'
+        'imagery/2015/file.tif' → '2015'
+    """
+    best_date = None
+    best_precision = 0  # 4=year, 6=month, 8=day
+    
+    for part in path.parts:
+        # 8-digit: YYYYMMDD → extract YYYYMM
+        if re.match(r'^\d{8}$', part):
+            candidate = part[:6]  # YYYYMM
+            if best_precision < 8:
+                best_date = candidate
+                best_precision = 8
+        # 6-digit: YYYYMM
+        elif re.match(r'^\d{6}$', part):
+            if best_precision < 6:
+                best_date = part
+                best_precision = 6
+        # 4-digit: YYYY
+        elif re.match(r'^\d{4}$', part):
+            if best_precision < 4:
+                best_date = part
+                best_precision = 4
+    
+    return best_date or "unknown"
 
 def get_band_count_safe(path: Path) -> tuple:
     """
@@ -341,11 +378,24 @@ def plot_spectral_profile(result: dict, output_path: Path, year: str):
     print(f"  Saved spectral profile: {output_path.name}")
 
 
-def merge_summaries(summary_files: list, output_path: Path, year: str, prefer_4band: bool = True):
+def merge_summaries(
+    summary_files: list, 
+    output_path: Path, 
+    year: str, 
+    capture_date: str = None,  # NEW PARAMETER
+    prefer_4band: bool = True
+):
     """
     Merge multiple summary.json files, keeping best result per transect.
     
     When prefer_4band=True, 4-band detections take precedence over 3-band.
+    
+    Args:
+        summary_files: List of summary JSON paths to merge
+        output_path: Path for merged output JSON
+        year: Year string for metadata
+        capture_date: Capture date string (YYYYMM or YYYY format) for metadata
+        prefer_4band: If True, prefer 4-band results over 3-band
     """
     all_transects = {}  # TransectID -> best result
     band_mode_counts = defaultdict(int)
@@ -389,6 +439,7 @@ def merge_summaries(summary_files: list, output_path: Path, year: str, prefer_4b
     merged = {
         'metadata': {
             'year': year,
+            'capture_date': capture_date or year,  # NEW: Store capture_date
             'merged_from': len(summary_files),
             'timestamp': datetime.now().isoformat()
         },
@@ -404,6 +455,7 @@ def merge_summaries(summary_files: list, output_path: Path, year: str, prefer_4b
     print(f"    Total transects: {len(merged['transects'])}")
     print(f"    Band modes: {merged['band_mode_summary']}")
     print(f"    Total transitions: {merged['total_transitions']}")
+    print(f"    Capture date: {capture_date or year}")
     
     return output_path
 
@@ -561,6 +613,113 @@ def export_shellline_geojson(
     
     return output_file
 
+def bundle_shelllines_to_gpkg(
+    output_root: Path = None,
+    output_filename: str = "shelllines_algorithm.gpkg"
+) -> Path:
+    """
+    Bundle all shellline GeoJSONs into a single GeoPackage.
+    
+    Scans output_root for year directories containing shellline_*.geojson files,
+    combines them into a single GeoPackage with Year and Capture_Date attributes
+    matching the manual shoreline schema.
+    
+    Args:
+        output_root: Root directory containing year subdirectories (default: OUTPUT_ROOT)
+        output_filename: Name for output GeoPackage file
+    
+    Returns:
+        Path to created GeoPackage, or None if no shelllines found
+    """
+    if output_root is None:
+        output_root = OUTPUT_ROOT
+    
+    print()
+    print("=" * 60)
+    print("BUNDLING SHELLLINES TO GEOPACKAGE")
+    print("=" * 60)
+    
+    all_features = []
+    
+    # Find all shellline GeoJSON files
+    shellline_files = sorted(output_root.glob("*/shellline_*.geojson"))
+    
+    if not shellline_files:
+        print("No shellline files found to bundle.")
+        return None
+    
+    print(f"Found {len(shellline_files)} shellline files")
+    
+    for shellline_path in shellline_files:
+        year_dir = shellline_path.parent
+        year = year_dir.name
+        
+        # Load the shellline GeoJSON
+        try:
+            gdf = gpd.read_file(shellline_path)
+        except Exception as e:
+            print(f"  Warning: Could not read {shellline_path}: {e}")
+            continue
+        
+        if gdf.empty:
+            print(f"  Skipping empty: {year}")
+            continue
+        
+        # Try to get Capture_Date from corresponding summary JSON
+        summary_path = year_dir / f"summary_{year}.json"
+        capture_date = year  # Default to year if no better info
+        
+        if summary_path.exists():
+            try:
+                with open(summary_path) as f:
+                    summary = json.load(f)
+                # Get capture_date from metadata (stored by merge_summaries)
+                capture_date = summary.get("metadata", {}).get("capture_date", year)
+            except Exception:
+                pass
+        
+        # Add/update attributes to match manual shoreline schema
+        gdf["Year"] = int(year) if year.isdigit() else 0
+        gdf["Capture_Date"] = capture_date
+        
+        all_features.append(gdf)
+        print(f"  Added: {year} (Capture_Date: {capture_date})")
+    
+    if not all_features:
+        print("No valid shelllines to bundle.")
+        return None
+    
+    # Combine all GeoDataFrames
+    combined = gpd.GeoDataFrame(pd.concat(all_features, ignore_index=True))
+    
+    # Ensure CRS is set (use first non-None)
+    for gdf in all_features:
+        if gdf.crs is not None:
+            combined.set_crs(gdf.crs, inplace=True)
+            break
+    
+    # Select and order columns for output (prioritize schema-matching columns)
+    priority_columns = ["Year", "Capture_Date", "avg_confidence"]
+    other_columns = [c for c in combined.columns 
+                     if c not in priority_columns and c != "geometry"]
+    final_columns = ["geometry"] + priority_columns + other_columns
+    final_columns = [c for c in final_columns if c in combined.columns]
+    
+    combined = combined[final_columns]
+    
+    # Sort by year
+    combined = combined.sort_values("Year").reset_index(drop=True)
+    
+    # Export to GeoPackage
+    output_path = output_root / output_filename
+    combined.to_file(output_path, driver="GPKG")
+    
+    print()
+    print(f"Bundled {len(combined)} shorelines to: {output_path}")
+    print(f"  Years: {sorted(combined['Year'].unique())}")
+    print(f"  CRS: {combined.crs}")
+    
+    return output_path
 
 # === MAIN ===
 
@@ -633,6 +792,9 @@ def main():
         # Track summary files created for this year
         date_summaries = []
         
+        # Track capture dates for this year
+        year_capture_dates = []
+
         # Track the best result for target transect (for diagnostic plot)
         best_target_result = None
         best_target_is_4band = False
@@ -667,6 +829,12 @@ def main():
                 )
                 date_summaries.append(latest_summary)
                 
+                # Extract capture date from this directory
+                sample_raster = dir_rasters[0]['path'] if dir_rasters else None
+                if sample_raster:
+                    dir_capture_date = extract_capture_date_from_path(sample_raster)
+                    year_capture_dates.append(dir_capture_date)
+                    
                 # Determine if this directory had 4-band
                 dir_is_4band = n_4band > 0
                 
@@ -701,7 +869,15 @@ def main():
             print(f"\n  Merging {len(date_summaries)} date summaries...")
             
             merged_summary = output_dir / f"summary_{year}.json"
-            merge_summaries(date_summaries, merged_summary, year, prefer_4band=True)
+            # Determine best capture date for year (prefer most precise, earliest)
+            if year_capture_dates:
+                # Sort by length (longer = more precise) then value (earlier date)
+                year_capture_dates.sort(key=lambda d: (-len(d), d))
+                best_capture_date = year_capture_dates[0]
+            else:
+                best_capture_date = year
+   
+            merge_summaries(date_summaries, merged_summary, year, capture_date=best_capture_date, prefer_4band=True)
             
             # Export shellline from merged summary WITH footprint clipping
             shellline_file = output_dir / f"shellline_{year}.geojson"
@@ -727,6 +903,9 @@ def main():
         
         print(f"\n  Year {year} complete.")
 
+    # Bundle all shelllines into single GeoPackage
+    bundle_shelllines_to_gpkg(OUTPUT_ROOT)
+    
     print()
     print("=" * 60)
     print("BATCH COMPLETE")
