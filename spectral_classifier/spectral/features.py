@@ -11,8 +11,8 @@ import numpy as np
 import pandas as pd
 from scipy import signal
 from scipy.stats import linregress
-from .config import EPSILON, THRESHOLDS
-from .data_io import detect_band_mode_from_dataframe
+from spectral_classifier.config import EPSILON, THRESHOLDS
+from ..utils.data_io import detect_band_mode_from_dataframe
 
 logger = logging.getLogger(__name__)
 

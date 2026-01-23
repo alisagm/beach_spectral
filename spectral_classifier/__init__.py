@@ -33,15 +33,13 @@ __author__ = 'Spectral Analysis Team'
 
 # Import main components for convenience
 from .main import analyze_all_transects, process_single_transect
-from .data_io import (
+from .utils import (
     build_raster_index,
     load_transects,
     reproject_if_needed,
-    find_overlapping_rasters
+    find_overlapping_rasters  
 )
-from .sampler import sample_transect
-from .features import SpectralFeatures
-from .classifier import LandcoverClassifier
+from .spectral import SpectralFeatures, sample_transect
 from .transition import TransitionDetector
 from .visualization import plot_transect_analysis
 from .config import THRESHOLDS, LANDCOVER_CLASSES, LANDCOVER_COLORS

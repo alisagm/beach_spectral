@@ -1,228 +1,183 @@
-# Spectral Transect Classification System
+# Spectral Shoreline Detection System
 
-A Python-based system to automatically classify spectral profiles from cross-shore transects and identify transition zones (beach-water interfaces). The system analyzes multi-band spectral data (Red, Green, Blue, NIR) along transects extracted from GeoTIFF rasters and GeoJSON geometries.
+Automated detection of beach-water boundaries (shell lines) using spectral analysis of aerial and satellite imagery.
 
-## Features
+## Overview
 
-- **Spatial indexing and lazy loading** of rasters for efficient memory usage
-- **Automated CRS handling** with reprojection when needed
-- **Direction detection**: Automatically detects transect orientation and plots consistently west-referenced
-- **Feature extraction**: Spectral indices (NDVI, NDWI), statistical features, shape features
-- **Rule-based classification**: ALL_LAND, OCEAN, DRY_BEACH, VEG_DUNES, WAVE_CRESTS
-- **Transition zone detection**: Identifies beach-water interfaces with confidence scores
-- **Clean logging**: Console shows only warnings/errors, detailed logs saved to file
-- **Batch processing**: Processes all transects, visualizes 5 representative ones by default
+This system processes multi-band imagery (4-band RGBN, 3-band CIR, or 3-band RGB) along cross-shore transects to identify the dry beach / wet beach transition (shell line). The primary output is a GeoJSON file containing the detected shoreline position for each transect.
 
-## Installation
+### Key Features
 
-### Requirements
+- **Multi-band support**: Works with 4-band (RGBN), CIR [NIR,R,G], and RGB imagery
+- **Automatic band detection**: Distinguishes CIR from RGB automatically
+- **Year-level processing**: Batch processing with consistent band handling per year
+- **Cascading fallback**: Always provides output, even for difficult imagery
+- **Confidence scoring**: Each detection includes reliability assessment
 
-- Python 3.8+
-- Dependencies listed in `requirements.txt`
-
-### Setup
+## Quick Start
 
 ```bash
-# Clone or download the repository
-cd beach_spectral
+# Process all years in imagery directory
+python run.py \
+    --imagery-root ./PAIS_shorelines/imagery \
+    --transects ./INPUT/shorelineTransPais.json \
+    --output ./OUTPUT
 
-# Create a virtual environment (recommended)
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Process specific year
+python run.py --year 2020 --imagery-root ./imagery --output ./OUTPUT
 
-# Install dependencies
-pip install -r requirements.txt
+# List available years without processing
+python run.py --imagery-root ./imagery --dry-run
 ```
 
-## Input Data Format
+## Output
 
-### 1. GeoTIFF Rasters
-- **Band order**: Red (1), Green (2), Blue (3), NIR (4)
-- All rasters must share the same CRS
-- Can span multiple tiles
+For each year processed:
 
-### 2. GeoJSON Transects
-- Format: GeoJSON FeatureCollection
-- Geometry: LineString (one per transect)
-- Required property: `TransectID` (unique identifier)
-- CRS: Any valid CRS (will be reprojected to match rasters if needed)
-
-## Usage
-
-### Command Line Interface
-
-```bash
-python -m spectral_classifier.main \
-  --rasters /path/to/rasters \
-  --transects /path/to/transects.geojson \
-  --output /path/to/output \
-  --num-visualize 5 \
-  --verbose
+```
+OUTPUT/{year}/
+├── shellline_{year}.geojson    # PRIMARY OUTPUT - detected shoreline
+├── summary_{year}.json         # Processing metadata and statistics
+├── spectral_profile_{year}.png # Diagnostic plot for transect 1000
+└── processing.log              # Debug log
 ```
 
-**Arguments:**
-- `--rasters`: Directory containing GeoTIFF files
-- `--transects`: Path to GeoJSON file with transect LineStrings
-- `--output`: Directory to save output files
-- `--num-visualize`: Number of transects to visualize (default: 5)
-- `--verbose`: Enable verbose debug logging
-
-### Python API
-
-```python
-from spectral_classifier import analyze_all_transects
-
-results = analyze_all_transects(
-    raster_dir='path/to/rasters',
-    transect_geojson='path/to/transects.geojson',
-    output_dir='path/to/output',
-    num_visualize=5,
-    verbose=True
-)
-```
-
-## Output Files
-
-The system generates the following outputs in the specified output directory:
-
-1. **`transect_analysis_YYYYMMDD_HHMMSS.csv`**
-   - Columns: TransectID, distance, red, green, blue, nir, predicted_class, transition_flag, confidence
-   - All sample points for all transects
-
-2. **`summary_YYYYMMDD_HHMMSS.json`**
-   - Summary statistics for all transects
-   - Class distributions
-   - Transition locations and counts
-   - Processing metadata
-
-3. **`transect_<ID>_analysis.png`** (for 5 representative transects)
-   - 4-band spectral profiles (Red, Green, Blue, NIR)
-   - Color-coded classification background
-   - Transition zone markers with confidence scores
-   - Direction-aware x-axis labels ("Distance from West" or "Distance to West")
-
-4. **`processing.log`**
-   - INFO-level messages and above (or DEBUG if --verbose flag used)
-   - Console displays only WARNING and ERROR messages for clean output
-
-## Configuration
-
-Adjust classification thresholds and parameters in `spectral_classifier/config.py`:
-
-```python
-THRESHOLDS = {
-    'land_brightness_min': 140,
-    'ocean_brightness_max': 120,
-    'ndwi_water_min': 0.2,
-    'nir_drop': 20,
-    # ... and more
-}
-```
-
-## Module Structure
+## Package Structure
 
 ```
 spectral_classifier/
-├── __init__.py          # Package initialization
-├── config.py            # Configuration parameters
-├── data_io.py           # Raster & GeoJSON loading, CRS handling
-├── sampler.py           # Spectral value extraction
-├── features.py          # Feature extraction (SpectralFeatures)
-├── classifier.py        # Landcover classification (LandcoverClassifier)
-├── transition.py        # Transition detection (TransitionDetector)
-├── visualization.py     # Plotting functions
-├── utils.py             # Helper functions
-└── main.py              # Pipeline orchestration
+├── __init__.py          # Package exports
+├── config.py            # Configuration and thresholds
+├── main.py              # Pipeline orchestration
+├── run.py               # CLI entry point
+│
+├── spectral/            # Spectral analysis
+│   ├── sampler.py       # Value extraction along transects
+│   └── features.py      # Feature computation (REUSABLE)
+│
+├── transition/          # Boundary detection
+│   ├── nir.py           # NIR-based detection
+│   ├── rgb.py           # RGB fallback detection
+│   └── shell_line.py    # TransitionDetector class
+│
+├── utils/               # Utilities
+│   ├── data_io.py       # Raster/GeoJSON loading
+│   ├── export.py        # CSV/JSON export
+│   ├── batch.py         # Year-based batch processing
+│   └── logging_config.py
+│
+├── visualization/       # Plotting
+│   └── plotting.py      # Diagnostic visualizations
+│
+└── optional/            # Non-essential modules
+    ├── landcover_classifier.py  # Point classification
+    └── boundary_types.py        # Veg/waterline detection
+
+tools/
+├── validate_shorelines.py      # Validation vs manual shorelines
+└── DEPRECATED_HEURISTICS.md    # Historical approaches
 ```
 
-## Processing Pipeline
+## Detection Approach
 
-1. **Build raster spatial index** - Create bounding box index without loading pixel data
-2. **Load transects** - Read GeoJSON and validate TransectID field
-3. **CRS validation** - Reproject transects if CRS mismatch detected
-4. **Direction detection** - Detect transect orientation from first transect (west-to-east or east-to-west)
-5. **Sequential processing** - For each transect:
-   - Find overlapping rasters (lazy load only needed tiles)
-   - Sample spectral values every 1m (bilinear interpolation)
-   - Adjust distances for consistent west-referenced plotting
-   - Compute spectral features (NDVI, NDWI, brightness, variability, etc.)
-   - Classify landcover using rule-based algorithm
-   - Apply spatial smoothing (median filter)
-   - Detect transition zones with confidence scores
-6. **Export results** - Save CSV and JSON outputs
-7. **Generate visualizations** - Plot 5 representative transects with direction-aware axes
+### Primary: NIR Derivative (4-band and CIR)
 
-## Landcover Classes
+The NIR band shows strong contrast between dry sand (high reflectance) and wet sand/water (low reflectance). The shell line is detected as the point of maximum negative NIR derivative.
 
-- **ALL_LAND**: High brightness, low variability, low NDVI
-- **OCEAN**: High NDWI, blue >= red, low brightness
-- **DRY_BEACH**: Moderate brightness, high NIR ratio
-- **VEG_DUNES**: High variability, oscillations, positive NDVI
-- **WAVE_CRESTS**: High variability, oscillations, low NDVI
-- **UNKNOWN**: No rules matched
+**Confidence factors:**
+- Derivative magnitude
+- NIR drop absolute value
+- Multi-band consensus
+- R/G ratio validation (~1.0 for sand)
+- Expected zone location (40-120m from land)
 
-## Transition Detection
+### Fallback: RGB Brightness (RGB-only)
 
-Transitions are detected using multiple criteria:
-1. Sharp NIR drop (>20 units over 3-5 points)
-2. NDWI increase (negative to positive)
-3. Brightness decrease (>30 units)
-4. Spectral angle change (>30 degrees)
-5. Class change in smoothed classification
+When NIR is unavailable, brightness derivative is used as a proxy. Confidence is capped at 0.70 due to reduced reliability.
 
-Each transition includes a confidence score (0-1) based on magnitude and context validation.
+### Selection Strategy
 
-## Direction Detection & Plotting
+1. **Strict mode**: High-confidence candidates in expected zone
+2. **Relaxed mode**: Re-run with lower thresholds
+3. **Best-available**: Strongest derivative in valid range
+4. **Last resort**: Expected zone median (guaranteed output)
 
-The system automatically detects transect orientation from the **first transect** by comparing eastings:
+## Reusable Components
 
-- **West-to-East transects**: Start point has lower easting than end point
-  - Distance plotted from 0m (west) to max (east)
-  - X-axis label: "Distance from West (m)"
+The spectral profiling in `spectral/features.py` is designed for adaptation to other applications:
 
-- **East-to-West transects**: Start point has higher easting than end point
-  - Distance plotted from -max (east) to 0m (west)
-  - X-axis label: "Distance to West (m)"
-
-All transects are plotted consistently with **west as the reference point (0m)**, regardless of their digitized direction.
-
-## Performance Optimization
-
-- **Lazy loading**: Rasters loaded on-demand per transect
-- **Spatial indexing**: Fast intersection queries
-- **Memory efficiency**: O(single raster) instead of O(all rasters)
-- **Selective visualization**: Process all, visualize subset
-- **Clean console output**: Only warnings/errors shown in terminal, full logs in file
-- **Vectorized operations**: NumPy/pandas for efficient feature computation
-
-## Troubleshooting
-
-### CRS Mismatch Error
+### Derivative Features
+```python
+# These methods can detect edges in ANY spectral band
+_compute_nir_derivative()      # First derivative
+_compute_nir_derivative_multiscale()  # Multi-scale
+_compute_nir_derivative_second()      # Inflection points
 ```
-ValueError: CRS mismatch: raster has EPSG:32610, expected EPSG:32611
-```
-**Solution**: Ensure all rasters share the same CRS. Reproject rasters if needed.
 
-### No Overlapping Rasters
+### Multi-band Consensus
+```python
+# Verify multiple bands agree on a transition
+check_multi_band_consensus(features, index, threshold)
 ```
-ValueError: No rasters overlap with transect geometry
-```
-**Solution**: Check that transect GeoJSON and rasters cover the same geographic area. Verify CRS compatibility.
 
-### Missing TransectID
+### Statistical Features
+```python
+_compute_variability()   # Local texture
+_compute_slope()         # Trend analysis
+_compute_spectral_angle()  # Spectral similarity
 ```
-ValueError: GeoJSON must contain 'TransectID' field
+
+## Configuration
+
+Key thresholds in `config.py`:
+
+```python
+THRESHOLDS = {
+    # NIR derivative threshold for shell line detection
+    'boundary_thresholds': {
+        'dry_wet': {
+            'nir_threshold': -8.0,          # Primary trigger
+            'min_nir_drop_absolute': 39.0,  # Context validation
+            'expected_location_min': 40,    # Zone constraints
+            'expected_location_max': 120,
+        }
+    },
+    
+    # RGB fallback (lower thresholds, lower confidence)
+    'rgb_thresholds': {
+        'brightness_derivative_threshold': -5.0,
+        'max_confidence': 0.70,
+    }
+}
 ```
-**Solution**: Ensure your GeoJSON FeatureCollection has a `TransectID` property for each feature.
+
+## Validation
+
+Compare algorithmic results against manual digitization:
+
+```bash
+python tools/validate_shorelines.py
+```
+
+Outputs per-year statistics including mean offset, directional bias, and per-transect comparisons.
+
+## Requirements
+
+- Python 3.8+
+- geopandas
+- rasterio
+- shapely
+- pandas
+- numpy
+- matplotlib
+- scipy
 
 ## References
 
-See `INPUT/beach_spectral_spec.md` for detailed implementation specifications.
+- Training data: seed=321197, n=2602 points, 10 transects
+- Phase 6 validation: 20-transect feature analysis
+- Empirical thresholds calibrated to PAIS (Padre Island National Seashore) imagery
 
-## License
+---
 
-MIT License
-
-## Contact
-
-For questions or issues, please contact the development team.
+*Developed for coastal shoreline monitoring at Padre Island National Seashore*

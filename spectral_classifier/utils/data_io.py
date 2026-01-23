@@ -16,7 +16,7 @@ from rasterio.crs import CRS
 from shapely.geometry import box
 import warnings
 
-from .config import BAND_DETECTION
+from spectral_classifier.config import BAND_DETECTION
 
 logger = logging.getLogger(__name__)
 

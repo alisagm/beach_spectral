@@ -12,13 +12,8 @@ import numpy as np
 import pandas as pd
 import rasterio
 from shapely.geometry import LineString, Point
-from .config import SAMPLING_INTERVAL
-from .data_io import (
-    RasterIndex, 
-    BAND_CONFIG_4BAND, 
-    BAND_CONFIG_CIR, 
-    BAND_CONFIG_RGB
-)
+from ..config import SAMPLING_INTERVAL
+from ..utils.data_io import RasterIndex, BAND_CONFIG_4BAND, BAND_CONFIG_CIR, BAND_CONFIG_RGB
 
 logger = logging.getLogger(__name__)
 

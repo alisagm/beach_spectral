@@ -11,8 +11,8 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 from scipy.ndimage import median_filter
-from .config import THRESHOLDS, LANDCOVER_CLASSES
-from .data_io import detect_band_mode_from_dataframe
+from ..config import THRESHOLDS, LANDCOVER_CLASSES
+from ..utils.data_io import detect_band_mode_from_dataframe
 
 logger = logging.getLogger(__name__)
 

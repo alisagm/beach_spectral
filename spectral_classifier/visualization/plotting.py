@@ -10,7 +10,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.colors import ListedColormap
-from .config import LANDCOVER_COLORS
+from ..config import LANDCOVER_COLORS
+from ..transition import TransitionDetector
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ def plot_transect_analysis(
 
     # PHASE 7C: Filter transitions to only show shore boundaries (shell line)
     if transitions:
-        from .transition import TransitionDetector
+        from ..transition import TransitionDetector
         shore_transitions = [t for t in transitions
                             if TransitionDetector.is_shore_boundary(t)]
         logger.debug(f"Filtered {len(transitions)} transitions -> {len(shore_transitions)} shore boundaries for plotting")

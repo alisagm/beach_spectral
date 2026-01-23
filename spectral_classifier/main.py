@@ -10,20 +10,13 @@ import argparse
 from pathlib import Path
 from typing import List, Dict
 
-from .config import NUM_TRANSECTS_TO_VISUALIZE, VERBOSE, DEFAULT_BOUNDARY_TYPES
-from .data_io import (
+from spectral_classifier.config import NUM_TRANSECTS_TO_VISUALIZE, VERBOSE, DEFAULT_BOUNDARY_TYPES
+from .utils import (
     build_raster_index,
     load_transects,
     reproject_if_needed,
     find_overlapping_rasters,
-    RasterIndex
-)
-from .sampler import sample_transect, validate_spectral_data
-from .features import SpectralFeatures
-from .classifier import LandcoverClassifier
-from .transition import TransitionDetector
-from .visualization import plot_transect_analysis
-from .utils import (
+    RasterIndex,
     setup_logging,
     export_results_to_csv,
     export_summary_json,
@@ -33,6 +26,10 @@ from .utils import (
     print_processing_summary,
     detect_transect_direction
 )
+from .spectral import sample_transect, validate_spectral_data, SpectralFeatures
+from .transition import TransitionDetector
+from .visualization.plotting import plot_transect_analysis
+from .optional import LandcoverClassifier
 
 logger = logging.getLogger(__name__)
 
