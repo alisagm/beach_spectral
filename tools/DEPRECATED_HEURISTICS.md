@@ -192,6 +192,61 @@ Used NDWI changes to identify water boundaries.
 
 ---
 
+## 7. Original Rule-Based Classification (Pre-Phase 6)
+
+**Status:** Replaced by NIR-derivative approach
+
+**Original Design:**
+The initial system used a two-step approach: (1) classify every point along the transect into landcover classes, then (2) find transitions between classes.
+
+**Classification Rules:**
+```python
+def classify_point(features):
+    """
+    Original rule-based point classification.
+    
+    Returns one of:
+        'ALL_LAND', 'OCEAN', 'DRY_BEACH', 'VEG_DUNES', 'WAVE_CRESTS'
+    """
+    # ALL_LAND: Brightness > 140 AND variability < 15 AND NDVI < 0.3
+    # OCEAN: NDWI > 0.2 AND Blue >= Red AND Brightness < 120
+    # DRY_BEACH: 90 < Brightness < 140 AND NIR_ratio > 0.75 AND variability < 20
+    # VEG_DUNES: variability > 25 AND has_oscillations AND NDVI > 0.2
+    # WAVE_CRESTS: Similar to VEG_DUNES but NDVI < 0.2
+```
+
+**Transition Detection Rules:**
+1. Sharp NIR drop: NIR decreases by >20 units over 3-5 consecutive points
+2. NDWI increase: Transition from NDWI < 0 to NDWI > 0.2
+3. Brightness decrease: Drop of >30 units over short distance
+4. Spectral angle change: Flag changes >30°
+5. Context validation: Verify neighboring points support beach→water sequence
+
+**Why This Approach Failed:**
+
+1. **NDVI assumptions invalid** — Expected positive NDVI for vegetation, but PAIS data showed all negative values (see Section 1)
+
+2. **Threshold sensitivity** — Brightness and variability thresholds varied too much across years, sensors, and atmospheric conditions
+
+3. **Classification errors propagated** — Misclassified points created false transitions or masked real ones
+
+4. **Unnecessary complexity** — Shell line detection doesn't require full landcover classification; direct edge detection is simpler and more robust
+
+5. **Spatial context ignored** — Point-by-point classification missed the sequential nature of beach transects
+
+**Replacement Approach:**
+
+Direct NIR derivative detection with confidence scoring:
+- Skip intermediate classification entirely
+- Find maximum negative NIR derivative directly
+- Use multi-band consensus for validation
+- Apply expected-zone constraints as priors
+- Cascade through fallback strategies for guaranteed output
+
+This reduced the pipeline from classify→smooth→find-transitions to simply find-strongest-edge-with-validation.
+
+---
+
 ## References
 
 - Original training data: seed=321197, n=2602 points, 10 transects
