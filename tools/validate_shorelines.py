@@ -18,6 +18,7 @@ Outputs:
 
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, Dict, List
 import numpy as np
@@ -45,6 +46,9 @@ YEARS = ["1995", "2004", "2010", "2016", "2020", "2022"]
 
 # Maximum distance to consider a valid intersection (meters)
 MAX_INTERSECTION_DISTANCE = 50.0  # If shoreline doesn't cross transect within this buffer, skip
+
+# Maximum time gap (minutes) between CSV files to be considered part of the same run
+MAX_CSV_GROUP_GAP_MINUTES = 20
 
 # Transect to use for diagnostic plots
 DIAGNOSTIC_TRANSECT_ID = 1000
@@ -148,43 +152,140 @@ def load_algorithm_shoreline(output_root: Path, year: str) -> Optional[gpd.GeoDa
     return gdf
 
 
-def find_most_recent_results_csv(output_root: Path, year: str) -> Optional[Path]:
+def find_results_csv_group(output_root: Path, year: str, 
+                           max_gap_minutes: int = MAX_CSV_GROUP_GAP_MINUTES) -> List[Path]:
     """
-    Find the most recent transect_analysis CSV file for a given year.
+    Find all transect_analysis CSV files from the most recent run.
     
-    Naming pattern: transect_analysis_{YYYYMMDD}_{HHMMSS}.csv
+    Files are grouped by timestamp proximity: consecutive files (when sorted by time)
+    within max_gap_minutes of each other are considered part of the same run.
+    This handles MultiLineString outputs where segments are processed sequentially.
     
+    Args:
+        output_root: Root output directory
+        year: Year string
+        max_gap_minutes: Maximum time gap between consecutive files to be considered same run
+        
     Returns:
-        Path to most recent CSV, or None if no matching files found
+        List of Paths to CSV files from the most recent run (sorted chronologically),
+        or empty list if no matching files found
     """
     year_dir = output_root / year
     
     if not year_dir.exists():
-        return None
+        return []
     
-    # Find all matching CSV files
+    # Find all matching CSV files with their timestamps
     pattern = re.compile(r'transect_analysis_(\d{8})_(\d{6})\.csv')
     
-    matching_files = []
+    files_with_timestamps = []
     for f in year_dir.glob('transect_analysis_*.csv'):
         match = pattern.match(f.name)
         if match:
-            # Extract datetime for sorting
             date_str = match.group(1)  # YYYYMMDD
             time_str = match.group(2)  # HHMMSS
-            datetime_str = f"{date_str}_{time_str}"
-            matching_files.append((datetime_str, f))
+            # Parse to datetime for proper comparison
+            dt = datetime.strptime(f"{date_str}_{time_str}", "%Y%m%d_%H%M%S")
+            files_with_timestamps.append((dt, f))
     
-    if not matching_files:
+    if not files_with_timestamps:
+        return []
+    
+    # Sort by timestamp (oldest to newest)
+    files_with_timestamps.sort(key=lambda x: x[0])
+    
+    # Group consecutive files that are within max_gap_minutes of each other
+    groups: List[List[Tuple[datetime, Path]]] = []
+    current_group = [files_with_timestamps[0]]
+    
+    for i in range(1, len(files_with_timestamps)):
+        current_dt, current_file = files_with_timestamps[i]
+        prev_dt, _ = current_group[-1]
+        
+        gap_minutes = (current_dt - prev_dt).total_seconds() / 60
+        
+        if gap_minutes <= max_gap_minutes:
+            # Same group - add to current
+            current_group.append((current_dt, current_file))
+        else:
+            # New group - save current and start fresh
+            groups.append(current_group)
+            current_group = [(current_dt, current_file)]
+    
+    # Don't forget the last group
+    groups.append(current_group)
+    
+    # Select the most recent group (last one since we sorted oldest to newest)
+    most_recent_group = groups[-1]
+    
+    # Extract just the paths (already in chronological order)
+    result = [f for _, f in most_recent_group]
+    
+    # Log what we found
+    if len(result) == 1:
+        print(f"  Found 1 analysis file: {result[0].name}")
+    else:
+        print(f"  Found {len(result)} analysis files from same run:")
+        for f in result:
+            print(f"    - {f.name}")
+    
+    return result
+
+
+def load_combined_results(csv_paths: List[Path]) -> Optional[pd.DataFrame]:
+    """
+    Load and combine multiple transect analysis CSV files into a single DataFrame.
+    
+    Args:
+        csv_paths: List of paths to CSV files
+        
+    Returns:
+        Combined DataFrame with all transects, or None if no valid data loaded
+    """
+    if not csv_paths:
         return None
     
-    # Sort by datetime string (works because format is consistent)
-    matching_files.sort(key=lambda x: x[0], reverse=True)
+    dfs = []
+    for path in csv_paths:
+        try:
+            df = pd.read_csv(path)
+            # Track source file for debugging
+            df['_source_file'] = path.name
+            dfs.append(df)
+        except Exception as e:
+            print(f"    Warning: Could not load {path.name}: {e}")
     
-    most_recent = matching_files[0][1]
-    print(f"  Found {len(matching_files)} analysis file(s), using most recent: {most_recent.name}")
+    if not dfs:
+        return None
     
-    return most_recent
+    combined = pd.concat(dfs, ignore_index=True)
+    
+    # Check for duplicate transects (shouldn't happen, but warn if it does)
+    if 'TransectID' in combined.columns:
+        duplicates = combined['TransectID'].duplicated().sum()
+        if duplicates > 0:
+            print(f"    Warning: Found {duplicates} duplicate TransectID entries across CSV files")
+            # Show which files have overlapping transects
+            dup_tids = combined[combined['TransectID'].duplicated(keep=False)]['TransectID'].unique()
+            print(f"    Duplicate TransectIDs: {sorted(dup_tids)[:10]}{'...' if len(dup_tids) > 10 else ''}")
+    
+    return combined
+
+
+# Legacy function for backwards compatibility
+def find_most_recent_results_csv(output_root: Path, year: str) -> Optional[Path]:
+    """
+    Find the most recent transect_analysis CSV file for a given year.
+    
+    DEPRECATED: Use find_results_csv_group() for MultiLineString support.
+    
+    Returns:
+        Path to most recent CSV, or None if no matching files found
+    """
+    csv_group = find_results_csv_group(output_root, year)
+    if csv_group:
+        return csv_group[-1]  # Return the last (most recent) file
+    return None
 
 
 def load_transects(transect_path: Path) -> gpd.GeoDataFrame:
@@ -550,7 +651,8 @@ def plot_diagnostic_spectral_profile(transect_id: int,
                                        algo_distance: float,
                                        difference: float,
                                        description: str,
-                                       output_dir: Path):
+                                       output_dir: Path,
+                                       spectral_data: Optional[pd.DataFrame] = None):
     """
     Create a spectral profile plot for a diagnostic transect.
     
@@ -568,23 +670,23 @@ def plot_diagnostic_spectral_profile(transect_id: int,
         difference: algo_distance - manual_distance
         description: e.g., 'best_agreement', 'worst_landward'
         output_dir: Directory to save plot
+        spectral_data: Pre-loaded combined DataFrame with spectral data for all transects.
+                       If None, will attempt to load from disk (legacy behavior).
     """
-    # Find most recent spectral data from the algorithm run
-    spectral_csv = find_most_recent_results_csv(ALGORITHM_OUTPUT_ROOT, year)
-    
-    if spectral_csv is None:
-        print(f"    Warning: No spectral data found for transect {transect_id} ({year})")
-        return None
-    
-    # Load spectral data
-    try:
-        df = pd.read_csv(spectral_csv)
-    except Exception as e:
-        print(f"    Warning: Could not load spectral data: {e}")
-        return None
+    # Use provided data or load from disk
+    if spectral_data is None:
+        # Legacy behavior: load from most recent CSV group
+        csv_paths = find_results_csv_group(ALGORITHM_OUTPUT_ROOT, year)
+        if not csv_paths:
+            print(f"    Warning: No spectral data found for transect {transect_id} ({year})")
+            return None
+        spectral_data = load_combined_results(csv_paths)
+        if spectral_data is None:
+            print(f"    Warning: Could not load spectral data for {year}")
+            return None
     
     # Filter to this transect
-    transect_data = df[df['TransectID'] == transect_id]
+    transect_data = spectral_data[spectral_data['TransectID'] == transect_id]
     
     if transect_data.empty:
         print(f"    Warning: No data for transect {transect_id} in results")
@@ -776,6 +878,14 @@ def main():
         print(f"  Manual shoreline: {manual_shoreline.geom_type} with {count_vertices(manual_shoreline)} vertices")
         print(f"  Algorithm shoreline: {algo_shoreline.geom_type} ({count_segments(algo_shoreline)} segments, {count_vertices(algo_shoreline)} vertices)")
         
+        # Load combined spectral data for this year (once, before comparison)
+        csv_paths = find_results_csv_group(ALGORITHM_OUTPUT_ROOT, year)
+        spectral_data = load_combined_results(csv_paths) if csv_paths else None
+        
+        if spectral_data is not None:
+            unique_transects = spectral_data['TransectID'].nunique()
+            print(f"  Spectral data: {len(spectral_data)} samples across {unique_transects} transects")
+        
         # Compare shorelines
         print(f"  Comparing {len(transects)} transects...")
         df = compare_shorelines_for_year(transects, manual_shoreline, algo_shoreline, year)
@@ -843,7 +953,8 @@ def main():
                 algo_distance=algo_dist,
                 difference=diff,
                 description=desc,
-                output_dir=year_output_dir
+                output_dir=year_output_dir,
+                spectral_data=spectral_data  # Pass pre-loaded data
             )
         
         # Save diagnostic transect list
