@@ -144,12 +144,12 @@ class TransitionDetector:
             dw_transitions, features, band_mode
         )
 
-        # Log selected transitions
-        logger.info(f"_select_best_shell_line_candidate returned {len(dw_transitions)} transitions")
+        # Log selected transitions (debug level to avoid console spam)
+        logger.debug(f"_select_best_shell_line_candidate returned {len(dw_transitions)} transitions")
         for i, t in enumerate(dw_transitions):
-            logger.info(f"  [{i}] dist={t['distance']:.1f}m, conf={t['confidence']:.2f}, "
-                       f"guaranteed={t.get('guaranteed_shell_line', False)}, "
-                       f"mode={t.get('detection_mode', 'unknown')}")
+            logger.debug(f"  [{i}] dist={t['distance']:.1f}m, conf={t['confidence']:.2f}, "
+                        f"guaranteed={t.get('guaranteed_shell_line', False)}, "
+                        f"mode={t.get('detection_mode', 'unknown')}")
 
         all_transitions.extend(dw_transitions)
 
@@ -169,15 +169,15 @@ class TransitionDetector:
             landcover
         )
 
-        logger.info(f"Detected {len(validated_transitions)} zone boundaries "
-                   f"(band_mode={band_mode})")
+        logger.debug(f"Detected {len(validated_transitions)} zone boundaries "
+                    f"(band_mode={band_mode})")
         
         if validated_transitions:
             method_counts = {}
             for t in validated_transitions:
                 method = t.get('detection_method', 'unknown')
                 method_counts[method] = method_counts.get(method, 0) + 1
-            logger.info(f"  Detection methods: {method_counts}")
+            logger.debug(f"  Detection methods: {method_counts}")
 
         return validated_transitions
 
@@ -614,18 +614,18 @@ class TransitionDetector:
 
         filtered = []
 
-        logger.info(f"_filter_transitions: Received {len(transitions)} transitions")
+        logger.debug(f"_filter_transitions: Received {len(transitions)} transitions")
         for i, t in enumerate(transitions):
-            logger.info(f"  [{i}] dist={t['distance']:.1f}m, conf={t['confidence']:.2f}, "
-                       f"method={t.get('detection_method', '?')}, "
-                       f"guaranteed={t.get('guaranteed_shell_line', False)}")
+            logger.debug(f"  [{i}] dist={t['distance']:.1f}m, conf={t['confidence']:.2f}, "
+                        f"method={t.get('detection_method', '?')}, "
+                        f"guaranteed={t.get('guaranteed_shell_line', False)}")
 
         for transition in transitions:
             is_guaranteed = transition.get('guaranteed_shell_line', False)
 
             # Always preserve guaranteed shell lines
             if is_guaranteed:
-                logger.info(f"Preserving guaranteed shell line at {transition['distance']:.1f}m")
+                logger.debug(f"Preserving guaranteed shell line at {transition['distance']:.1f}m")
                 idx = transition['index']
                 if 0 <= idx < len(landcover):
                     landcover.loc[idx, 'transition_flag'] = True

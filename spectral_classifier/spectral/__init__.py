@@ -16,19 +16,17 @@ See features.py docstrings for details on adaptable methods.
 
 from .sampler import (
     sample_transect,
-    interpolate_points_along_line,
-    sample_raster_at_point,
     validate_spectral_data,
+    interpolate_points_along_line,
+    sample_raster_at_point
 )
+
 from .features import SpectralFeatures
 
 __all__ = [
-    # Sampling
     'sample_transect',
+    'validate_spectral_data',
     'interpolate_points_along_line',
     'sample_raster_at_point',
-    'validate_spectral_data',
-    
-    # Features
     'SpectralFeatures',
 ]

@@ -157,7 +157,8 @@ def sample_raster_at_point(
                 return values, band_config
 
         except Exception as e:
-            logger.warning(f"Error sampling at ({x}, {y}): {e}")
+            # Log to file but don't spam console
+            logger.debug(f"Error sampling at ({x}, {y}): {e}")
             continue
 
     # If we get here, point is outside all rasters or in nodata region
@@ -171,7 +172,7 @@ def sample_transect(
     overlapping_rasters: List[Path],
     direction: str = 'west_to_east',
     raster_index: RasterIndex = None
-) -> pd.DataFrame:
+) -> Tuple[pd.DataFrame, int]:
     """
     Extract spectral values along a transect from rasters.
 
@@ -182,8 +183,10 @@ def sample_transect(
         raster_index: Optional RasterIndex for band configuration lookup
 
     Returns:
-        DataFrame with columns: [TransectID, distance, red, green, blue, nir]
-        (nir may be NaN for RGB-only imagery, blue may be NaN for CIR imagery)
+        Tuple of:
+            - DataFrame with columns: [TransectID, distance, red, green, blue, nir]
+              (nir may be NaN for RGB-only imagery, blue may be NaN for CIR imagery)
+            - int: Number of points skipped (outside coverage or nodata)
         
     Note:
         Band mode is determined at the dataset level via raster_index.get_primary_band_mode(),
@@ -207,6 +210,7 @@ def sample_transect(
 
     # Open all overlapping rasters
     datasets = []
+    skipped_count = 0  # Track skipped points for aggregated reporting
     
     try:
         for raster_path in overlapping_rasters:
@@ -229,10 +233,9 @@ def sample_transect(
                     'nir': spectral_values[3]  # May be NaN for RGB
                 })
 
-            except ValueError as e:
-                logger.warning(
-                    f"Skipping point at distance {distance:.1f}m: {e}"
-                )
+            except ValueError:
+                # Point outside coverage - count but don't log each one
+                skipped_count += 1
                 continue
 
         # For east_to_west transects, reverse the data order so westmost point comes first
@@ -255,7 +258,7 @@ def sample_transect(
 
     df = pd.DataFrame(data)
     
-    # Log sampling summary
+    # Log sampling summary (to file, not console)
     has_nir = not df['nir'].isna().all()
     has_blue = not df['blue'].isna().all()
     
@@ -267,12 +270,15 @@ def sample_transect(
     else:
         band_mode = BAND_CONFIG_RGB
     
-    logger.info(
-        f"Transect {transect_id}: sampled {len(df)} points over "
-        f"{df['distance'].max():.1f}m (band_mode={band_mode})"
+    # Summary log includes skip count
+    total_points = len(sample_points)
+    sampled_points = len(df)
+    logger.debug(
+        f"Transect {transect_id}: sampled {sampled_points}/{total_points} points "
+        f"over {df['distance'].max():.1f}m (band_mode={band_mode}, skipped={skipped_count})"
     )
 
-    return df
+    return df, skipped_count
 
 
 def validate_spectral_data(df: pd.DataFrame, require_nir: bool = False) -> bool:

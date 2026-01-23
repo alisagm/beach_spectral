@@ -24,7 +24,8 @@ from .utils import (
     validate_output_directory,
     calculate_processing_stats,
     print_processing_summary,
-    detect_transect_direction
+    detect_transect_direction,
+    ProgressTracker
 )
 from .spectral import sample_transect, validate_spectral_data, SpectralFeatures
 from .transition import TransitionDetector
@@ -75,6 +76,7 @@ def analyze_all_transects(
 
     # Step 1: Build raster spatial index (includes band configuration detection)
     logger.info("Step 1: Building raster spatial index...")
+    print("Building raster spatial index...")
     raster_index = build_raster_index(raster_dir, band_config_override=band_config_override)
     
     # Log band configuration summary
@@ -86,6 +88,11 @@ def analyze_all_transects(
     
     primary_mode = raster_index.get_primary_band_mode()
     logger.info(f"Primary band mode: {primary_mode}")
+    
+    # Print raster summary to console
+    print(f"Found {len(raster_index)} valid rasters (band config: {band_summary})")
+    if raster_index.skipped:
+        print(f"Skipped {len(raster_index.skipped)} invalid rasters")
 
     # Step 2: Load transects and handle CRS
     logger.info("Step 2: Loading transects...")
@@ -100,13 +107,21 @@ def analyze_all_transects(
     logger.info(f"Detected transect direction: {direction}")
     logger.info(f"All transects will be plotted with west at 0m (lowest easting on left)")
 
-    # Step 4: Process each transect sequentially
+    # Step 4: Process each transect with progress tracking
     logger.info(f"Step 4: Processing {len(transects)} transects...")
+    print(f"\nProcessing {len(transects)} transects...")
+    
+    # Initialize progress tracker
+    tracker = ProgressTracker(total_items=len(transects), item_noun="transect")
+    
     all_results = []
 
     for idx, transect in transects.iterrows():
+        # Update progress display
+        tracker.update(idx + 1)
+        
         try:
-            result = process_single_transect(
+            result, skipped_points = process_single_transect(
                 transect,
                 raster_index,
                 idx + 1,
@@ -115,14 +130,23 @@ def analyze_all_transects(
                 boundary_types
             )
             all_results.append(result)
+            tracker._processed_count += 1
+            
+            # Aggregate skipped points
+            if skipped_points > 0:
+                tracker.add_skipped("sample points (outside coverage)", skipped_points)
 
         except Exception as e:
             logger.error(
                 f"Failed to process transect {transect.TransectID}: {e}",
                 exc_info=True
             )
+            tracker.add_error(f"Transect {transect.TransectID}: {e}")
             continue
 
+    # Finish progress display
+    tracker.finish(success_count=len(all_results))
+    
     if not all_results:
         raise RuntimeError("No transects were successfully processed")
 
@@ -130,6 +154,7 @@ def analyze_all_transects(
 
     # Step 5: Export results
     logger.info("Step 5: Exporting results...")
+    print("\nExporting results...")
     csv_path = export_results_to_csv(all_results, output_dir)
 
     processing_stats = calculate_processing_stats(all_results)
@@ -147,6 +172,7 @@ def analyze_all_transects(
 
     # Step 6: Generate visualizations for selected transects
     logger.info(f"Step 6: Generating visualizations for {num_visualize} transects...")
+    print(f"Generating {num_visualize} diagnostic plots...")
     selected_transects = select_representative_transects(all_results, num_visualize)
 
     for result in selected_transects:
@@ -157,8 +183,10 @@ def analyze_all_transects(
                 f"Failed to plot transect {result['transect_id']}: {e}",
                 exc_info=True
             )
+            tracker.add_error(f"Plot {result['transect_id']}: {e}")
 
-    # Print summary
+    # Print summaries
+    tracker.print_summary()
     print_processing_summary(processing_stats)
 
     logger.info("Processing complete!")
@@ -174,7 +202,7 @@ def process_single_transect(
     total: int,
     direction: str = 'west_to_east',
     boundary_types: str = DEFAULT_BOUNDARY_TYPES
-) -> Dict:
+) -> tuple:
     """
     Process a single transect through the analysis pipeline.
 
@@ -190,11 +218,11 @@ def process_single_transect(
             - 'all': All boundaries including VEG_DUNES->BEACH_DRY
 
     Returns:
-        Dictionary with analysis results
+        Tuple of (result_dict, skipped_point_count)
     """
     transect_id = transect_row.TransectID
 
-    logger.info(f"[{current_idx}/{total}] Processing transect {transect_id}")
+    logger.debug(f"[{current_idx}/{total}] Processing transect {transect_id}")
 
     # Find intersecting rasters
     overlapping_rasters = find_overlapping_rasters(
@@ -204,16 +232,16 @@ def process_single_transect(
 
     logger.debug(f"  Found {len(overlapping_rasters)} overlapping rasters")
 
-    # Sample spectral values (pass raster_index for band config lookup)
-    spectral_data = sample_transect(
+    # Sample spectral values (returns tuple with skip count)
+    spectral_data, skipped_points = sample_transect(
         transect_row, 
         overlapping_rasters, 
         direction,
-        raster_index=raster_index  # IMPORTANT: Pass raster_index for CIR detection
+        raster_index=raster_index
     )
     validate_spectral_data(spectral_data)
 
-    logger.debug(f"  Sampled {len(spectral_data)} points")
+    logger.debug(f"  Sampled {len(spectral_data)} points (skipped {skipped_points})")
 
     # Extract features
     feature_extractor = SpectralFeatures(spectral_data)
@@ -242,8 +270,8 @@ def process_single_transect(
     logger.debug(f"  Detected {len(all_transitions)} transitions, "
                 f"returned {len(transitions)} (mode: {boundary_types})")
 
-    # Return results
-    return {
+    # Return results with skip count
+    result = {
         'transect_id': transect_id,
         'data': spectral_data,
         'features': features,
@@ -251,6 +279,8 @@ def process_single_transect(
         'transitions': transitions,
         'direction': direction
     }
+    
+    return result, skipped_points
 
 
 def main():

@@ -16,6 +16,61 @@ from ..transition import TransitionDetector
 logger = logging.getLogger(__name__)
 
 
+def _safe_percentile(values: np.ndarray, percentile: float, default: float = 0.0) -> float:
+    """
+    Compute percentile with NaN/Inf handling.
+    
+    Args:
+        values: Array of values (may contain NaN/Inf)
+        percentile: Percentile to compute (0-100)
+        default: Value to return if computation fails
+        
+    Returns:
+        Percentile value, or default if all values are invalid
+    """
+    # Remove NaN and Inf values
+    valid_values = values[np.isfinite(values)]
+    
+    if len(valid_values) == 0:
+        logger.warning(f"No valid values for percentile calculation, using default={default}")
+        return default
+    
+    return float(np.percentile(valid_values, percentile))
+
+
+def _get_spectral_ylim(data: pd.DataFrame) -> tuple:
+    """
+    Calculate safe y-axis limits for spectral data.
+    
+    Args:
+        data: DataFrame with red, green, blue, nir columns
+        
+    Returns:
+        Tuple of (y_min, y_max) with safe defaults if data is invalid
+    """
+    # Collect all spectral values, handling potential missing columns
+    all_values = []
+    for band in ['red', 'green', 'blue', 'nir']:
+        if band in data.columns:
+            band_values = data[band].values
+            all_values.extend(band_values[np.isfinite(band_values)])
+    
+    if not all_values:
+        logger.warning("No valid spectral values found, using default y-limits")
+        return (0, 255)  # Default for 8-bit imagery
+    
+    all_values = np.array(all_values)
+    
+    y_min = max(0, _safe_percentile(all_values, 1, 0) - 20)
+    y_max = _safe_percentile(all_values, 99, 255) + 20
+    
+    # Ensure valid range
+    if y_max <= y_min:
+        y_max = y_min + 100
+    
+    return (y_min, y_max)
+
+
 def plot_transect_analysis(
     result: Dict,
     output_dir: Path,
@@ -43,6 +98,11 @@ def plot_transect_analysis(
 
     logger.debug(f"Plotting transect {transect_id} with NIR derivative overlay")
 
+    # Validate we have plottable data
+    if len(data) == 0:
+        logger.warning(f"Transect {transect_id} has no data to plot")
+        return None
+
     # PHASE 7C: Filter transitions to only show shore boundaries (shell line)
     if transitions:
         from ..transition import TransitionDetector
@@ -52,6 +112,10 @@ def plot_transect_analysis(
         transitions = shore_transitions
 
     fig, ax = plt.subplots(figsize=figsize)
+
+    # Calculate y-limits first (needed for background plotting)
+    y_min, y_max = _get_spectral_ylim(data)
+    ax.set_ylim(y_min, y_max)
 
     # Plot background classification regions
     _plot_classification_background(ax, data, landcover)
@@ -83,12 +147,6 @@ def plot_transect_analysis(
     ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
     ax.legend(loc='upper left', fontsize=10, framealpha=0.9)
 
-    # Set reasonable y-limits for spectral values
-    all_values = data[['red', 'green', 'blue', 'nir']].values.flatten()
-    y_min = max(0, np.percentile(all_values, 1) - 20)
-    y_max = np.percentile(all_values, 99) + 20
-    ax.set_ylim(y_min, y_max)
-
     plt.tight_layout()
 
     # Save figure
@@ -96,7 +154,7 @@ def plot_transect_analysis(
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close()
 
-    logger.info(f"Saved plot to {output_path}")
+    logger.debug(f"Saved plot to {output_path}")
 
     return output_path
 
@@ -110,12 +168,11 @@ def _plot_classification_background(
     classes = landcover['predicted_class'].values
     distances = data['distance'].values
 
-    # Get y-axis limits for background spans
+    if len(classes) == 0 or len(distances) == 0:
+        return
+
+    # Get y-axis limits for background spans (already set by caller)
     y_min, y_max = ax.get_ylim()
-    if y_min == 0 and y_max == 1:  # Not set yet
-        all_values = data[['red', 'green', 'blue', 'nir']].values.flatten()
-        y_min = max(0, np.percentile(all_values, 1) - 20)
-        y_max = np.percentile(all_values, 99) + 20
 
     # Plot each class segment
     current_class = classes[0]
@@ -161,23 +218,29 @@ def _plot_spectral_bands(ax: plt.Axes, data: pd.DataFrame):
         label='Green',
         alpha=0.8
     )
-    ax.plot(
-        distance,
-        data['blue'],
-        color='blue',
-        linewidth=1.5,
-        label='Blue',
-        alpha=0.8
-    )
-    ax.plot(
-        distance,
-        data['nir'],
-        color='darkred',
-        linewidth=1.5,
-        label='NIR',
-        alpha=0.8,
-        linestyle='--'
-    )
+    
+    # Only plot blue if we have valid data (not all NaN for CIR imagery)
+    if 'blue' in data.columns and not data['blue'].isna().all():
+        ax.plot(
+            distance,
+            data['blue'],
+            color='blue',
+            linewidth=1.5,
+            label='Blue',
+            alpha=0.8
+        )
+    
+    # Only plot NIR if we have valid data
+    if 'nir' in data.columns and not data['nir'].isna().all():
+        ax.plot(
+            distance,
+            data['nir'],
+            color='darkred',
+            linewidth=1.5,
+            label='NIR',
+            alpha=0.8,
+            linestyle='--'
+        )
 
 
 def _plot_nir_derivative(
@@ -198,6 +261,12 @@ def _plot_nir_derivative(
 
     distance = features['distance']
     nir_d1 = features['nir_d1_smooth']
+
+    # Check for valid derivative data
+    valid_deriv = nir_d1[np.isfinite(nir_d1)]
+    if len(valid_deriv) == 0:
+        logger.warning("No valid NIR derivative values to plot")
+        return ax2
 
     # Plot NIR derivative
     ax2.plot(
@@ -231,9 +300,11 @@ def _plot_nir_derivative(
     ax2.set_ylabel('NIR Derivative (units/m)', fontsize=11, fontweight='bold', color='darkorange')
     ax2.tick_params(axis='y', labelcolor='darkorange')
 
-    # Set y-limits for derivative
-    deriv_max = max(abs(nir_d1.max()), abs(nir_d1.min()))
-    ax2.set_ylim(-deriv_max * 1.2, deriv_max * 1.2)
+    # Set y-limits for derivative with safe handling
+    deriv_abs_max = max(abs(valid_deriv.max()), abs(valid_deriv.min()))
+    if deriv_abs_max == 0 or not np.isfinite(deriv_abs_max):
+        deriv_abs_max = 10  # Default
+    ax2.set_ylim(-deriv_abs_max * 1.2, deriv_abs_max * 1.2)
 
     # Add legend for derivative
     ax2.legend(loc='upper right', fontsize=9, framealpha=0.9)
@@ -376,7 +447,7 @@ def plot_summary_statistics(
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close()
 
-    logger.info(f"Saved summary plot to {output_path}")
+    logger.debug(f"Saved summary plot to {output_path}")
 
     return output_path
 
@@ -406,6 +477,11 @@ def plot_spectral_only(
     """
     logger.debug(f"Plotting clean spectral profile for transect {transect_id}")
 
+    # Validate data
+    if len(data) == 0:
+        logger.warning(f"Transect {transect_id} has no data to plot")
+        return None
+
     fig, ax = plt.subplots(figsize=figsize)
 
     distance = data['distance']
@@ -427,23 +503,29 @@ def plot_spectral_only(
         label='Green',
         alpha=0.9
     )
-    ax.plot(
-        distance,
-        data['blue'],
-        color='blue',
-        linewidth=2,
-        label='Blue',
-        alpha=0.9
-    )
-    ax.plot(
-        distance,
-        data['nir'],
-        color='darkred',
-        linewidth=2,
-        label='NIR',
-        alpha=0.9,
-        linestyle='--'
-    )
+    
+    # Only plot blue if valid
+    if 'blue' in data.columns and not data['blue'].isna().all():
+        ax.plot(
+            distance,
+            data['blue'],
+            color='blue',
+            linewidth=2,
+            label='Blue',
+            alpha=0.9
+        )
+    
+    # Only plot NIR if valid
+    if 'nir' in data.columns and not data['nir'].isna().all():
+        ax.plot(
+            distance,
+            data['nir'],
+            color='darkred',
+            linewidth=2,
+            label='NIR',
+            alpha=0.9,
+            linestyle='--'
+        )
 
     # Add NIR derivative on secondary y-axis if available
     ax2 = None
@@ -471,10 +553,8 @@ def plot_spectral_only(
     # Legend
     ax.legend(loc='upper right' if ax2 is None else 'upper left', fontsize=11, framealpha=0.9)
 
-    # Set y-limits with some padding
-    all_values = data[['red', 'green', 'blue', 'nir']].values.flatten()
-    y_min = max(0, np.percentile(all_values, 1) - 20)
-    y_max = np.percentile(all_values, 99) + 20
+    # Set y-limits with safe handling
+    y_min, y_max = _get_spectral_ylim(data)
     ax.set_ylim(y_min, y_max)
 
     # Increase tick label size for readability
@@ -487,7 +567,7 @@ def plot_spectral_only(
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close()
 
-    logger.info(f"Saved clean plot to {output_path}")
+    logger.debug(f"Saved clean plot to {output_path}")
 
     return output_path
 
