@@ -18,7 +18,7 @@ Usage:
     footprint = compute_merged_footprint(raster_paths, edge_buffer_m=25)
     
     # Clip shoreline
-    clipped = clip_shoreline_to_footprint(shoreline_geom, footprint)
+    clipped = clip_line_to_footprint(shoreline_geom, footprint)
 """
 
 import numpy as np
@@ -272,7 +272,7 @@ def compute_merged_footprint(
     return merged, crs
 
 
-def clip_shoreline_to_footprint(
+def clip_line_to_footprint(
     shoreline: 'shapely.geometry.LineString',
     footprint: 'shapely.geometry.base.BaseGeometry',
     min_segment_length_m: float = 100.0
@@ -435,7 +435,7 @@ if __name__ == '__main__':
         footprint = transform(transformer.transform, footprint)
     
     # Clip
-    clipped = clip_shoreline_to_footprint(original_geom, footprint)
+    clipped = clip_line_to_footprint(original_geom, footprint)
     
     # Save
     from shapely.geometry import MultiLineString

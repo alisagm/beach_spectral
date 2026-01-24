@@ -28,9 +28,9 @@ def extract_year_from_path(path: Path) -> str:
     Extract year from path like 'imagery/2016/20160122/file.tif'.
     
     Handles multiple date formats in directory names:
-        - 4 digits: YYYY (e.g., '2016' → '2016')
-        - 6 digits: YYYYMM (e.g., '200605' → '2006')
-        - 8 digits: YYYYMMDD (e.g., '20160122' → '2016')
+        - 4 digits: YYYY (e.g., '2016' â†’ '2016')
+        - 6 digits: YYYYMM (e.g., '200605' â†’ '2006')
+        - 8 digits: YYYYMMDD (e.g., '20160122' â†’ '2016')
     
     Args:
         path: Path to raster file
@@ -61,15 +61,15 @@ def extract_capture_date_from_path(path: Path) -> str:
         - 'unknown' if no date found
     
     Examples:
-        'imagery/2016/20160122/file.tif' → '201601'
-        'imagery/200605/file.tif' → '200605'
-        'imagery/2015/file.tif' → '2015'
+        'imagery/2016/20160122/file.tif' â†’ '201601'
+        'imagery/200605/file.tif' â†’ '200605'
+        'imagery/2015/file.tif' â†’ '2015'
     """
     best_date = None
     best_precision = 0  # 4=year, 6=month, 8=day
     
     for part in path.parts:
-        # 8-digit: YYYYMMDD → extract YYYYMM
+        # 8-digit: YYYYMMDD â†’ extract YYYYMM
         if re.match(r'^\d{8}$', part):
             candidate = part[:6]  # YYYYMM
             if best_precision < 8:
@@ -213,55 +213,74 @@ def resolve_year_band_config(
     min_bands: int = 3
 ) -> Tuple[str, List[Path]]:
     """
-    Resolve band configuration for a year's imagery using majority voting.
+    Resolve band configuration for a year's imagery using priority-based selection.
     
-    When a year has mixed band configurations (e.g., some CIR, some RGB),
-    this function determines the dominant configuration and filters to
-    only include rasters matching that configuration.
+    All rasters in a year typically share the same source, so we use the BEST
+    available detection method rather than filtering by detected mode.
     
-    Priority: 4band > cir > rgb (when counts are equal)
+    Priority logic:
+    1. If ANY raster is 4-band → use '4band' (NIR method) for entire year
+    2. If all 3-band and ANY detected as CIR → use 'cir' for entire year
+    3. Only use 'rgb' if ALL rasters are detected as RGB
+    
+    This favors NIR-based detection methods which are more reliable for
+    coastal shoreline detection. Statistical CIR/RGB detection can misclassify
+    in low-vegetation coastal environments.
     
     Args:
         raster_paths: List of raster paths for a single year
         min_bands: Minimum bands required (default: 3)
         
     Returns:
-        Tuple of (resolved_band_mode, filtered_raster_paths)
+        Tuple of (resolved_band_mode, all_valid_raster_paths)
+        Note: Returns ALL valid paths, not filtered by mode
     """
     classifications = []
+    valid_paths = []
     
     for path in raster_paths:
         info = classify_raster(path)
         if info['error'] is None and info['band_count'] >= min_bands:
             classifications.append(info)
+            valid_paths.append(path)
     
     if not classifications:
         logger.warning("No valid rasters found for year")
         return 'rgb', []
     
-    # Count by band mode
+    # Count by band mode for logging
     mode_counts = defaultdict(int)
-    mode_paths = defaultdict(list)
-    
     for info in classifications:
-        mode = info['band_mode']
-        mode_counts[mode] += 1
-        mode_paths[mode].append(info['path'])
+        mode_counts[info['band_mode']] += 1
     
-    # Resolve: prefer 4band > cir > rgb when counts are equal
-    priority = {'4band': 3, 'cir': 2, 'rgb': 1}
+    logger.debug(f"Band mode detection counts: {dict(mode_counts)}")
     
-    best_mode = max(
-        mode_counts.keys(),
-        key=lambda m: (mode_counts[m], priority.get(m, 0))
-    )
+    # Priority-based resolution (not majority voting)
+    # 1. If ANY is 4-band, use 4band
+    if mode_counts.get('4band', 0) > 0:
+        resolved_mode = '4band'
+        logger.info(
+            f"Resolved band config: {resolved_mode} "
+            f"({mode_counts['4band']}/{len(classifications)} are 4-band)"
+        )
+    # 2. If ANY is CIR (and none are 4-band), use CIR
+    elif mode_counts.get('cir', 0) > 0:
+        resolved_mode = 'cir'
+        logger.info(
+            f"Resolved band config: {resolved_mode} "
+            f"({mode_counts['cir']}/{len(classifications)} detected as CIR, "
+            f"favoring NIR-based detection)"
+        )
+    # 3. Only use RGB if ALL are RGB
+    else:
+        resolved_mode = 'rgb'
+        logger.info(
+            f"Resolved band config: {resolved_mode} "
+            f"(all {len(classifications)} rasters are RGB-only)"
+        )
     
-    logger.info(
-        f"Resolved band config: {best_mode} "
-        f"(counts: {dict(mode_counts)})"
-    )
-    
-    return best_mode, mode_paths[best_mode]
+    # Return ALL valid paths (not filtered) since all share same source
+    return resolved_mode, valid_paths
 
 
 def detect_cir_from_filename(path: Path) -> bool:

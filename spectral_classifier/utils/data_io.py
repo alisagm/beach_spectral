@@ -120,8 +120,8 @@ def detect_band_configuration(raster_path: Path, sample_size: int = None) -> str
     - In RGB imagery, Band 1 (Red) has similar or lower variance than Band 2 (Green)
     
     Empirical observation from PAIS imagery:
-    - CIR: Band1_StdDev / Band2_StdDev â‰ˆ 1.14 (NIR more variable)
-    - RGB: Band1_StdDev / Band2_StdDev â‰ˆ 0.97 (Red less variable than Green)
+    - CIR: Band1_StdDev / Band2_StdDev Ã¢â€°Ë† 1.14 (NIR more variable)
+    - RGB: Band1_StdDev / Band2_StdDev Ã¢â€°Ë† 0.97 (Red less variable than Green)
     
     Args:
         raster_path: Path to raster file
@@ -190,8 +190,8 @@ def detect_band_configuration(raster_path: Path, sample_size: int = None) -> str
         variance_ratio = band1_std / (band2_std + 1e-6)
         
         # Heuristic threshold from config
-        # CIR: NIR (band1) has higher variance than Red (band2) â†’ ratio > threshold
-        # RGB: Red (band1) has similar/lower variance than Green (band2) â†’ ratio â‰¤ threshold
+        # CIR: NIR (band1) has higher variance than Red (band2) Ã¢â€ â€™ ratio > threshold
+        # RGB: Red (band1) has similar/lower variance than Green (band2) Ã¢â€ â€™ ratio Ã¢â€°Â¤ threshold
         
         if variance_ratio > cir_threshold:
             detected = BAND_CONFIG_CIR
@@ -200,7 +200,7 @@ def detect_band_configuration(raster_path: Path, sample_size: int = None) -> str
         else:
             detected = BAND_CONFIG_RGB
             logger.info(f"Detected RGB imagery: {raster_path.name} "
-                       f"(Band1/Band2 StdDev ratio = {variance_ratio:.3f} â‰¤ {cir_threshold})")
+                       f"(Band1/Band2 StdDev ratio = {variance_ratio:.3f} Ã¢â€°Â¤ {cir_threshold})")
         
         return detected
 
@@ -454,10 +454,7 @@ def find_overlapping_rasters(
         raster_index: RasterIndex object
 
     Returns:
-        List of raster paths that intersect the transect
-
-    Raises:
-        ValueError: If no overlapping rasters found
+        List of raster paths that intersect the transect (may be empty)
     """
     overlapping = []
 
@@ -465,15 +462,14 @@ def find_overlapping_rasters(
         if transect_geometry.intersects(raster_geom):
             overlapping.append(raster_path)
 
-    if not overlapping:
-        raise ValueError(
-            f"No rasters overlap with transect geometry. "
-            f"Transect bounds: {transect_geometry.bounds}"
+    if overlapping:
+        logger.debug(
+            f"Found {len(overlapping)} overlapping rasters for transect"
         )
-
-    logger.debug(
-        f"Found {len(overlapping)} overlapping rasters for transect"
-    )
+    else:
+        logger.debug(
+            f"No rasters overlap with transect (bounds: {transect_geometry.bounds})"
+        )
 
     return overlapping
 

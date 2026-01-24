@@ -136,6 +136,11 @@ def analyze_all_transects(
             if skipped_points > 0:
                 tracker.add_skipped("sample points (outside coverage)", skipped_points)
 
+        except NoCoverageError:
+            # Expected with gappy imagery - track quietly, don't log as error
+            tracker.add_skipped("transects (no raster coverage)", 1)
+            continue
+            
         except Exception as e:
             logger.error(
                 f"Failed to process transect {transect.TransectID}: {e}",
@@ -195,6 +200,11 @@ def analyze_all_transects(
     return all_results
 
 
+class NoCoverageError(Exception):
+    """Raised when a transect has no raster coverage (expected with gappy imagery)."""
+    pass
+
+
 def process_single_transect(
     transect_row,
     raster_index: RasterIndex,
@@ -219,6 +229,9 @@ def process_single_transect(
 
     Returns:
         Tuple of (result_dict, skipped_point_count)
+        
+    Raises:
+        NoCoverageError: If transect has no raster coverage (expected, not a real error)
     """
     transect_id = transect_row.TransectID
 
@@ -229,6 +242,10 @@ def process_single_transect(
         transect_row.geometry,
         raster_index
     )
+    
+    # Handle no coverage case (expected with gappy imagery)
+    if not overlapping_rasters:
+        raise NoCoverageError(f"Transect {transect_id} has no raster coverage")
 
     logger.debug(f"  Found {len(overlapping_rasters)} overlapping rasters")
 

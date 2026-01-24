@@ -153,22 +153,23 @@ def process_year(
     
     try:
         # Resolve band configuration for this year
+        # Priority: 4band > cir > rgb (favors NIR-based detection)
         if band_mode_override and band_mode_override != 'auto':
             band_config = band_mode_override
-            filtered_paths = raster_paths
+            valid_paths = raster_paths
         else:
-            band_config, filtered_paths = resolve_year_band_config(raster_paths)
+            band_config, valid_paths = resolve_year_band_config(raster_paths)
         
         print(f"  Band mode: {band_config}")
-        print(f"  Valid rasters: {len(filtered_paths)}")
+        print(f"  Valid rasters: {len(valid_paths)}/{len(raster_paths)}")
         
-        if not filtered_paths:
+        if not valid_paths:
             print(f"  ERROR: No valid rasters for year {year}")
             return False
         
         # Create temporary directory with symlinks or use first raster's parent
         # For now, assume all rasters are in same directory structure
-        raster_dir = filtered_paths[0].parent
+        raster_dir = valid_paths[0].parent
         
         # Run analysis
         results = analyze_all_transects(

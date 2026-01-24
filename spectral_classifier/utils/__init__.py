@@ -50,7 +50,7 @@ from .batch import (
 # Footprint clipping
 from .footprint_clip import (
     clip_line_to_footprint,
-    detect_raster_footprint
+    get_raster_valid_footprint
 )
 
 __all__ = [
@@ -86,5 +86,5 @@ __all__ = [
     'detect_cir_from_filename',
     # Footprint
     'clip_line_to_footprint',
-    'detect_raster_footprint',
+    'get_raster_valid_footprint',
 ]
