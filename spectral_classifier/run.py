@@ -39,6 +39,7 @@ from spectral_classifier.utils import (
     group_rasters_by_year,
     resolve_year_band_config,
     validate_output_directory,
+    bundle_shell_lines_to_gpkg,
 )
 from spectral_classifier.config import DEFAULT_BOUNDARY_TYPES
 
@@ -176,6 +177,7 @@ def process_year(
             raster_dir=raster_dir,
             transect_geojson=transect_file,
             output_dir=year_output_dir,
+            year=year,
             verbose=verbose,
             boundary_types=boundary_types,
             band_config_override=band_config if band_config != '4band' else None
@@ -300,6 +302,15 @@ def main():
             if geojson.exists():
                 print(f"  {geojson}")
 
+    # Bundle all years into single GeoPackage
+    successful_years = [y for y in years_to_process if results.get(y)]
+    if len(successful_years) > 0:
+        gpkg_path = bundle_shell_lines_to_gpkg(
+            output_root=args.output,
+            years=successful_years
+        )
+        if gpkg_path:
+            print(f"\nBundled GeoPackage: {gpkg_path}")
 
 if __name__ == '__main__':
     main()

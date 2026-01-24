@@ -25,7 +25,9 @@ from .export import (
     select_representative_transects,
     validate_output_directory,
     calculate_processing_stats,
-    print_processing_summary
+    print_processing_summary,
+    export_shell_line_geojson,
+    bundle_shell_lines_to_gpkg
 )
 
 # Logging configuration
@@ -72,6 +74,8 @@ __all__ = [
     'validate_output_directory',
     'calculate_processing_stats',
     'print_processing_summary',
+    'export_shell_line_geojson',
+    'bundle_shell_lines_to_gpkg',
     # Logging
     'setup_logging',
     'get_logger',

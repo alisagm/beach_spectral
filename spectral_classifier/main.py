@@ -25,7 +25,8 @@ from .utils import (
     calculate_processing_stats,
     print_processing_summary,
     detect_transect_direction,
-    ProgressTracker
+    ProgressTracker,
+    export_shell_line_geojson
 )
 from .spectral import sample_transect, validate_spectral_data, SpectralFeatures
 from .transition import TransitionDetector
@@ -39,6 +40,7 @@ def analyze_all_transects(
     raster_dir: Path,
     transect_geojson: Path,
     output_dir: Path,
+    year: str = None,
     num_visualize: int = NUM_TRANSECTS_TO_VISUALIZE,
     verbose: bool = VERBOSE,
     boundary_types: str = DEFAULT_BOUNDARY_TYPES,
@@ -175,6 +177,19 @@ def analyze_all_transects(
         }
     )
 
+    # Export shell line GeoJSON (primary output)
+    if year:
+        geojson_path = export_shell_line_geojson(
+            all_results,
+            output_dir,
+            year=year,
+            source_crs=str(raster_index.crs)
+        )
+        if geojson_path:
+            print(f"  Shell line: {geojson_path}")
+    else:
+        logger.warning("Year not specified - skipping shell line GeoJSON export")
+        
     # Step 6: Generate visualizations for selected transects
     logger.info(f"Step 6: Generating visualizations for {num_visualize} transects...")
     print(f"Generating {num_visualize} diagnostic plots...")

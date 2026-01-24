@@ -226,7 +226,9 @@ def sample_transect(
 
                 data.append({
                     'TransectID': transect_id,
-                    'distance': distance,  # Keep original distance for now
+                    'distance': distance,
+                    'x': point.x,
+                    'y': point.y,  
                     'red': spectral_values[0],
                     'green': spectral_values[1],
                     'blue': spectral_values[2],

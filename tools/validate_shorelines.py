@@ -42,7 +42,7 @@ TRANSECT_FILE = Path(r"C:\Users\alisa\Desktop\SIP\git\beach_spectral\INPUT\shore
 OUTPUT_DIR = Path(r"C:\Users\alisa\Desktop\SIP\git\beach_spectral\validation\manual_comparison")
 
 # Years to compare (must exist in both manual and algorithm outputs)
-YEARS = ["1995", "2004", "2010", "2016", "2020", "2022"] 
+YEARS = ["2022"] 
 
 # Maximum distance to consider a valid intersection (meters)
 MAX_INTERSECTION_DISTANCE = 50.0  # If shoreline doesn't cross transect within this buffer, skip
