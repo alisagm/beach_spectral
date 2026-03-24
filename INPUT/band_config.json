@@ -1,0 +1,74 @@
+{
+  "1995": {
+    "format": "CIR",
+    "nir_band": 1,
+    "otsu_threshold": 0.301961,
+    "band_count": 3
+  },
+  "2004": {
+    "format": "CIR",
+    "nir_band": 1,
+    "otsu_threshold": 0.427451,
+    "band_count": 3
+  },
+  "2006": {
+    "format": "CIR",
+    "nir_band": 1,
+    "otsu_threshold": 0.341176,
+    "band_count": 3
+  },
+  "2007": {
+    "format": "CIR",
+    "nir_band": 1,
+    "otsu_threshold": 0.431373,
+    "band_count": 3
+  },
+  "2008": {
+    "format": "CIR",
+    "nir_band": 1,
+    "otsu_threshold": 0.207843,
+    "band_count": 3
+  },
+  "2009": {
+    "format": "CIR",
+    "nir_band": 1,
+    "otsu_threshold": 0.290196,
+    "band_count": 3
+  },
+  "2010": {
+    "format": "RGBN",
+    "nir_band": 4,
+    "otsu_threshold": 0.337255,
+    "band_count": 4
+  },
+  "2012": {
+    "format": "RGBN",
+    "nir_band": 4,
+    "otsu_threshold": 0.392157,
+    "band_count": 4
+  },
+  "2014": {
+    "format": "RGBN",
+    "nir_band": 4,
+    "otsu_threshold": 0.364706,
+    "band_count": 4
+  },
+  "2016": {
+    "format": "RGBN",
+    "nir_band": 4,
+    "otsu_threshold": 0.254902,
+    "band_count": 4
+  },
+  "2020": {
+    "format": "CIR",
+    "nir_band": 1,
+    "otsu_threshold": 0.313725,
+    "band_count": 3
+  },
+  "2022": {
+    "format": "RGB",
+    "nir_band": null,
+    "otsu_threshold": 0.392157,
+    "band_count": 3
+  }
+}
