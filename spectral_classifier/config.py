@@ -31,23 +31,9 @@ BAND_INDICES = {
     'nir': 3
 }
 
-# ============================================================================
-# BAND DETECTION CONFIGURATION
-# ============================================================================
-# Heuristics for distinguishing CIR [NIR,R,G] from RGB [R,G,B] in 3-band imagery
-BAND_DETECTION = {
-    # Variance ratio threshold: Band1_StdDev / Band2_StdDev
-    # CIR: NIR (band1) has higher variance than Red (band2) → ratio > threshold
-    # RGB: Red (band1) has similar/lower variance than Green (band2) → ratio ≤ threshold
-    # Empirical values from PAIS imagery: CIR ≈ 1.14, RGB ≈ 0.97
-    'cir_variance_ratio_threshold': 1.05,
-    
-    # Minimum valid samples needed for reliable detection
-    'min_valid_samples': 100,
-    
-    # Sample size for band detection (random pixels)
-    'sample_size': 10000,
-}
+from pathlib import Path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent  # spectral_classifier/ → beach_spectral/
+BAND_CONFIG_PATH = PROJECT_ROOT / "INPUT" / "band_config.json"
 
 # Classification thresholds
 # Updated based on training data analysis (seed 321197, n=2602 points, 10 transects)

@@ -10,8 +10,9 @@ import argparse
 from pathlib import Path
 from typing import List, Dict
 
-from spectral_classifier.config import NUM_TRANSECTS_TO_VISUALIZE, VERBOSE, DEFAULT_BOUNDARY_TYPES
+from spectral_classifier.config import NUM_TRANSECTS_TO_VISUALIZE, VERBOSE, DEFAULT_BOUNDARY_TYPES, BAND_CONFIG_PATH
 from .utils import (
+    load_band_config,
     build_raster_index,
     load_transects,
     reproject_if_needed,
@@ -25,7 +26,8 @@ from .utils import (
     calculate_processing_stats,
     print_processing_summary,
     ProgressTracker,
-    export_shell_line_geojson
+    export_shell_line_geojson,
+    extract_year_from_path
 )
 from .spectral import sample_transect, validate_spectral_data, SpectralFeatures
 from .transition import TransitionDetector
@@ -39,11 +41,10 @@ def analyze_all_transects(
     raster_dir: Path,
     transect_geojson: Path,
     output_dir: Path,
-    year: str = None,
+    band_config_path: Path = BAND_CONFIG_PATH,
     num_visualize: int = NUM_TRANSECTS_TO_VISUALIZE,
     verbose: bool = VERBOSE,
     boundary_types: str = DEFAULT_BOUNDARY_TYPES,
-    band_config_override: str = None
 ) -> List[Dict]:
     """
     Main pipeline to analyze all transects.
@@ -75,27 +76,22 @@ def analyze_all_transects(
     logger.info("=" * 60)
     logger.info(f"Boundary detection mode: {boundary_types}")
 
-    # Step 1: Build raster spatial index (includes band configuration detection)
+    # Step 1: Build raster spatial index 
     logger.info("Step 1: Building raster spatial index...")
     print("Building raster spatial index...")
-    raster_index = build_raster_index(raster_dir, band_config_override=band_config_override)
-    
-    # Log band configuration summary
-    band_summary = raster_index.get_band_config_summary()
-    if band_config_override:
-        logger.info(f"Band configurations (override={band_config_override}): {band_summary}")
-    else:
-        logger.info(f"Band configurations (auto-detected): {band_summary}")
-    
-    primary_mode = raster_index.get_primary_band_mode()
-    logger.info(f"Primary band mode: {primary_mode}")
+    raster_index = build_raster_index(raster_dir)
+    year = extract_year_from_path(raster_dir)
+
+    # Step 2: Load band configuration from band_config.json
+    year_config = load_band_config(BAND_CONFIG_PATH, year)
+    logger.info(f"Band config for {year}: {year_config}")
     
     # Print raster summary to console
-    print(f"Found {len(raster_index)} valid rasters (band config: {band_summary})")
+    print(f"Found {len(raster_index)} valid rasters")
     if raster_index.skipped:
         print(f"Skipped {len(raster_index.skipped)} invalid rasters")
 
-    # Step 2: Load transects and handle CRS
+    # Step 3: Load transects and handle CRS
     logger.info("Step 2: Loading transects...")
     transects = load_transects(transect_geojson)
 
@@ -121,6 +117,7 @@ def analyze_all_transects(
                 raster_index,
                 idx + 1,
                 len(transects),
+                year_config,
                 boundary_types
             )
             all_results.append(result)
@@ -164,8 +161,7 @@ def analyze_all_transects(
             'raster_dir': str(raster_dir),
             'transect_file': str(transect_geojson),
             'raster_crs': str(raster_index.crs),
-            'band_configurations': band_summary,
-            'primary_band_mode': primary_mode
+            'band_config': year_config
         }
     )
 
@@ -217,7 +213,7 @@ def process_single_transect(
     raster_index: RasterIndex,
     current_idx: int,
     total: int,
-    direction: str = 'west_to_east',
+    year_config: dict,
     boundary_types: str = DEFAULT_BOUNDARY_TYPES
 ) -> tuple:
     """
@@ -260,7 +256,7 @@ def process_single_transect(
     spectral_data, skipped_points = sample_transect(
         transect_row, 
         overlapping_rasters, 
-        direction,
+        year_config,
         raster_index=raster_index
     )
     validate_spectral_data(spectral_data)
@@ -300,8 +296,7 @@ def process_single_transect(
         'data': spectral_data,
         'features': features,
         'landcover': landcover,
-        'transitions': transitions,
-        'direction': direction
+        'transitions': transitions
     }
     
     return result, skipped_points
@@ -344,6 +339,20 @@ Band configuration is auto-detected per raster file.
         type=Path,
         required=True,
         help='Directory to save output files'
+    )
+
+    parser.add_argument(
+        '--band-config',
+        type=Path,
+        default=Path('INPUT/band_config.json'),   # conventional location
+        help='Path to band_config.json (default: INPUT/band_config.json)'
+    )
+
+    parser.add_argument(
+        '--year',
+        type=str,
+        required=True,
+        help='Year string matching a key in band_config.json (e.g. "2016")'
     )
 
     parser.add_argument(

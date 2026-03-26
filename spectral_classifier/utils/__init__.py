@@ -4,6 +4,12 @@ Utilities package for spectral transect classification system.
 Re-exports commonly used utilities from submodules for convenient importing.
 """
 
+# Band configuration
+from .band_config import (
+    load_band_config,
+    resolve_band_indices
+)
+
 # Data I/O
 from .data_io import (
     build_raster_index,
@@ -13,9 +19,7 @@ from .data_io import (
     RasterIndex,
     BAND_CONFIG_4BAND,
     BAND_CONFIG_CIR,
-    BAND_CONFIG_RGB,
-    detect_band_mode_from_dataframe,
-    validate_raster_bands
+    BAND_CONFIG_RGB
 )
 
 # Export utilities
@@ -53,6 +57,9 @@ from .footprint_clip import (
 )
 
 __all__ = [
+    # Band config
+    'load_band_config',
+    'resolve_band_indices',
     # Data I/O
     'build_raster_index',
     'load_transects',
@@ -62,8 +69,6 @@ __all__ = [
     'BAND_CONFIG_4BAND',
     'BAND_CONFIG_CIR',
     'BAND_CONFIG_RGB',
-    'detect_band_mode_from_dataframe',
-    'validate_raster_bands',
     # Export
     'export_results_to_csv',
     'export_summary_json',
@@ -77,8 +82,6 @@ __all__ = [
     'setup_logging',
     'get_logger',
     'ProgressTracker',
-    # Helpers
-    'detect_transect_direction',
     # Batch
     'extract_year_from_path',
     'extract_capture_date_from_path',
