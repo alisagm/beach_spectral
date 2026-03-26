@@ -1,10 +1,23 @@
 """
 Spectral sampling module for extracting values along transects.
 
-Supports 3-band (RGB or CIR) and 4-band (RGBN) imagery with automatic
-band remapping based on detected configuration.
+Supports 3-band (RGB or CIR) and 4-band (RGBNIR) imagery.
+Band assignments are read from band_config.json rather than detected at runtime.
+
+Distance convention
+-------------------
+``distance`` is always arc-length measured from the **lowest-easting vertex** of
+the transect as defined in the source GeoJSON.  For the standard PAIS east-to-west
+transect orientation this means:
+
+    distance = 0   →  landward / west end
+    distance ≈ 300 →  seaward  / east end
+
+No directional flag is needed anywhere in the pipeline.  Visualization code can
+plot ``distance`` directly on a west-left / east-right x-axis.
 """
 
+import json
 import logging
 from pathlib import Path
 from typing import List, Tuple, Dict, Optional
@@ -13,24 +26,120 @@ import pandas as pd
 import rasterio
 from shapely.geometry import LineString, Point
 from ..config import SAMPLING_INTERVAL
-from ..utils.data_io import RasterIndex, BAND_CONFIG_4BAND, BAND_CONFIG_CIR, BAND_CONFIG_RGB
 
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Band configuration helpers
+# ---------------------------------------------------------------------------
+
+def load_band_config(band_config_path: Path, year: str) -> dict:
+    """
+    Load the band configuration entry for a single year from band_config.json.
+
+    Args:
+        band_config_path: Path to band_config.json
+        year: Year string, e.g. "2016"
+
+    Returns:
+        Dict with keys: format, nir_band, otsu_threshold, band_count
+
+    Raises:
+        KeyError: If year is not present in the config file
+        FileNotFoundError: If band_config.json does not exist
+    """
+    with open(band_config_path) as f:
+        full_config = json.load(f)
+
+    if year not in full_config:
+        raise KeyError(
+            f"Year '{year}' not found in {band_config_path}. "
+            f"Available years: {sorted(full_config.keys())}"
+        )
+
+    return full_config[year]
+
+
+def resolve_band_indices(year_config: dict) -> Dict[str, Optional[int]]:
+    """
+    Resolve 1-based band indices for red, green, blue, and nir from a year config entry.
+
+    For CIR and RGBNIR, the non-NIR bands are assigned in ascending index order:
+        CIR    (3-band): non-NIR bands → [red, green]
+        RGBNIR (4-band): non-NIR bands → [red, green, blue]
+
+    This matches the standard sensor conventions that assign_band_labels.py was
+    calibrated against (physics-invariant ranking: Red > Green). If your dataset
+    deviates from this ordering, add a manual override in band_config.json and
+    extend this function.
+
+    Args:
+        year_config: Single year entry from band_config.json
+
+    Returns:
+        Dict with keys 'red', 'green', 'blue', 'nir', values are 1-based int or None
+    """
+    fmt = year_config["format"].upper().replace("-", "")
+    nir_band = year_config.get("nir_band")  # 1-based, None for RGB
+    band_count = year_config["band_count"]
+
+    if fmt == "RGB":
+        return {"red": 1, "green": 2, "blue": 3, "nir": None}
+
+    elif fmt == "CIR":
+        # Two non-NIR bands; assign in ascending index order → [red, green]
+        non_nir = sorted(i for i in range(1, band_count + 1) if i != nir_band)
+        if len(non_nir) != 2:
+            raise ValueError(
+                f"CIR format expects 3 bands total, got {band_count} "
+                f"(nir_band={nir_band})"
+            )
+        return {"red": non_nir[0], "green": non_nir[1], "blue": None, "nir": nir_band}
+
+    elif fmt in ("RGBNIR", "RGBN", "4BAND"):
+        # Three non-NIR bands; assign in ascending index order → [red, green, blue]
+        non_nir = sorted(i for i in range(1, band_count + 1) if i != nir_band)
+        if len(non_nir) != 3:
+            raise ValueError(
+                f"RGBNIR format expects 4 bands total, got {band_count} "
+                f"(nir_band={nir_band})"
+            )
+        return {
+            "red": non_nir[0],
+            "green": non_nir[1],
+            "blue": non_nir[2],
+            "nir": nir_band,
+        }
+
+    else:
+        raise ValueError(
+            f"Unrecognised format '{year_config['format']}'. "
+            "Expected one of: RGB, CIR, RGBNIR, RGBN, 4BAND."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Geometry helpers
+# ---------------------------------------------------------------------------
+
 def interpolate_points_along_line(
     line: LineString,
-    interval: float = SAMPLING_INTERVAL
+    interval: float = SAMPLING_INTERVAL,
 ) -> List[Tuple[Point, float]]:
     """
     Generate points at fixed intervals along a LineString.
+
+    Distances are arc-length from the **first vertex** of ``line`` as defined
+    in the source geometry.  Callers that need distances measured from the
+    lowest-easting vertex should apply the flip in ``sample_transect``.
 
     Args:
         line: Shapely LineString geometry
         interval: Distance between points in same units as line CRS
 
     Returns:
-        List of (Point, distance_from_start) tuples
+        List of (Point, distance_from_first_vertex) tuples
     """
     points = []
     total_length = line.length
@@ -53,115 +162,85 @@ def interpolate_points_along_line(
     return points
 
 
+# ---------------------------------------------------------------------------
+# Core sampling functions
+# ---------------------------------------------------------------------------
+
 def sample_raster_at_point(
     point: Point,
     raster_datasets: List[rasterio.DatasetReader],
-    band_configs: Dict[Path, str] = None
-) -> Tuple[np.ndarray, str]:
+    year_config: dict,
+) -> np.ndarray:
     """
-    Sample spectral bands at a point location using bilinear interpolation.
-    
-    Handles different band configurations:
-    - 4band: Returns [red, green, blue, nir] directly
-    - cir: Remaps [NIR, Red, Green] to [red, green, blue, nir] with blue=None marker
-    - rgb: Returns [red, green, blue, None] with nir=None marker
+    Sample spectral bands at a point location using the year's band configuration.
+
+    All band routing is driven by year_config (from band_config.json) via
+    resolve_band_indices(). No per-file detection is performed.
 
     Args:
         point: Shapely Point geometry
-        raster_datasets: List of open rasterio datasets
-        band_configs: Dict mapping dataset paths to band configuration strings
+        raster_datasets: List of open rasterio datasets to search
+        year_config: Single year entry from band_config.json
 
     Returns:
-        Tuple of (array of [red, green, blue, nir] values, band_config string)
-        For 3-band imagery, missing bands are set to np.nan
+        np.ndarray of shape (4,): [red, green, blue, nir]
+        Missing bands (blue for CIR, nir for RGB) are np.nan.
 
     Raises:
-        ValueError: If point is outside all rasters
+        ValueError: If point is outside all rasters or in a nodata region
     """
     x, y = point.x, point.y
-    band_configs = band_configs or {}
+    indices = resolve_band_indices(year_config)
 
-    # Try each raster dataset
+    # Collect the 1-based band indices we actually need to read
+    bands_to_read = [
+        idx for idx in [
+            indices["red"], indices["green"], indices["blue"], indices["nir"]
+        ]
+        if idx is not None
+    ]
+
     for dataset in raster_datasets:
-        # Check if point is within raster bounds
+        # Bounds check
         if not (
-            dataset.bounds.left <= x <= dataset.bounds.right and
-            dataset.bounds.bottom <= y <= dataset.bounds.top
+            dataset.bounds.left <= x <= dataset.bounds.right
+            and dataset.bounds.bottom <= y <= dataset.bounds.top
         ):
             continue
 
-        # Convert geographic coordinates to pixel coordinates
+        # Pixel check (guards against floating-point edge cases)
         row, col = dataset.index(x, y)
-
-        # Check if within raster dimensions
         if not (0 <= row < dataset.height and 0 <= col < dataset.width):
             continue
 
-        # Determine band configuration
-        # Try to get from band_configs dict using dataset name
-        dataset_path = Path(dataset.name) if dataset.name else None
-        band_config = band_configs.get(dataset_path, None)
-        
-        # Fallback: detect from band count
-        if band_config is None:
-            if dataset.count >= 4:
-                band_config = BAND_CONFIG_4BAND
-            else:
-                # Default to RGB if we can't determine
-                band_config = BAND_CONFIG_RGB
-                logger.debug(f"No band config for {dataset_path}, defaulting to RGB")
-
         try:
-            if band_config == BAND_CONFIG_4BAND:
-                # Standard 4-band: read all 4 bands
-                values = next(dataset.sample([(x, y)], indexes=[1, 2, 3, 4]))
-                
-                # Check for nodata values
-                if dataset.nodata is not None and np.any(values == dataset.nodata):
-                    continue
-                    
-                return values.astype(float), band_config
-                
-            elif band_config == BAND_CONFIG_CIR:
-                # CIR [NIR, Red, Green] stored as bands 1,2,3
-                # Remap to [Red, Green, Blue=nan, NIR]
-                raw_values = next(dataset.sample([(x, y)], indexes=[1, 2, 3]))
-                
-                # Check for nodata
-                if dataset.nodata is not None and np.any(raw_values == dataset.nodata):
-                    continue
-                
-                # Remap: band1=NIR, band2=Red, band3=Green
-                nir = float(raw_values[0])
-                red = float(raw_values[1])
-                green = float(raw_values[2])
-                blue = np.nan  # No blue band in CIR
-                
-                values = np.array([red, green, blue, nir])
-                return values, band_config
-                
-            else:  # BAND_CONFIG_RGB
-                # True RGB [Red, Green, Blue] - no NIR
-                raw_values = next(dataset.sample([(x, y)], indexes=[1, 2, 3]))
-                
-                # Check for nodata
-                if dataset.nodata is not None and np.any(raw_values == dataset.nodata):
-                    continue
-                
-                red = float(raw_values[0])
-                green = float(raw_values[1])
-                blue = float(raw_values[2])
-                nir = np.nan  # No NIR band in RGB
-                
-                values = np.array([red, green, blue, nir])
-                return values, band_config
+            raw = next(dataset.sample([(x, y)], indexes=bands_to_read))
+
+            # Nodata check across all read bands
+            if dataset.nodata is not None and np.any(raw == dataset.nodata):
+                continue
+
+            # DN=0 sentinel check (black fill / unwritten tiles)
+            if np.all(raw == 0):
+                continue
+
+            # Map raw values back to [red, green, blue, nir]
+            band_map = {
+                band_idx: float(val)
+                for band_idx, val in zip(bands_to_read, raw)
+            }
+
+            return np.array([
+                band_map.get(indices["red"],   np.nan),
+                band_map.get(indices["green"],  np.nan),
+                band_map.get(indices["blue"],   np.nan) if indices["blue"]  is not None else np.nan,
+                band_map.get(indices["nir"],    np.nan) if indices["nir"]   is not None else np.nan,
+            ])
 
         except Exception as e:
-            # Log to file but don't spam console
-            logger.debug(f"Error sampling at ({x}, {y}): {e}")
+            logger.debug(f"Error sampling at ({x:.2f}, {y:.2f}): {e}")
             continue
 
-    # If we get here, point is outside all rasters or in nodata region
     raise ValueError(
         f"Point ({x:.2f}, {y:.2f}) is outside all raster coverage or in nodata region"
     )
@@ -170,165 +249,117 @@ def sample_raster_at_point(
 def sample_transect(
     transect_row,
     overlapping_rasters: List[Path],
-    direction: str = 'west_to_east',
-    raster_index: RasterIndex = None
+    year_config: dict,
 ) -> Tuple[pd.DataFrame, int]:
     """
     Extract spectral values along a transect from rasters.
 
+    Distance convention
+    -------------------
+    ``distance`` is arc-length from the **lowest-easting vertex** of the transect
+    geometry, regardless of how the vertices are ordered in the source GeoJSON.
+    For PAIS transects (east-to-west in the GeoJSON) this means:
+
+        distance = 0   →  west / landward end
+        distance ≈ 300 →  east / seaward end
+
+    Nodata / out-of-coverage points are recorded as NaN rows and then linearly
+    interpolated over interior gaps (bounded by valid data on both sides).
+    Leading/trailing NaNs at the transect ends are left as NaN.
+
     Args:
-        transect_row: Row from transects GeoDataFrame (must have geometry and TransectID)
-        overlapping_rasters: List of raster file paths that intersect the transect
-        direction: 'west_to_east' or 'east_to_west' - determines distance sign
-        raster_index: Optional RasterIndex for band configuration lookup
+        transect_row: Row from transects GeoDataFrame (needs .geometry and .TransectID)
+        overlapping_rasters: Raster paths that intersect the transect
+        year_config: Single year entry from band_config.json
 
     Returns:
         Tuple of:
-            - DataFrame with columns: [TransectID, distance, red, green, blue, nir]
-              (nir may be NaN for RGB-only imagery, blue may be NaN for CIR imagery)
-            - int: Number of points skipped (outside coverage or nodata)
-        
-    Note:
-        Band mode is determined at the dataset level via raster_index.get_primary_band_mode(),
-        not per-transect. This keeps the return signature simple.
+            - DataFrame: [TransectID, distance, x, y, red, green, blue, nir]
+              sorted by distance (west → east).
+              (blue is NaN for CIR, nir is NaN for RGB)
+            - int: Number of points that hit nodata and were interpolated over
     """
     transect_id = transect_row.TransectID
     geometry = transect_row.geometry
 
     logger.debug(f"Sampling transect {transect_id}")
 
-    # Generate sample points along transect
     sample_points = interpolate_points_along_line(geometry, SAMPLING_INTERVAL)
 
-    # Get max distance for reversal if needed
-    max_distance = sample_points[-1][1] if sample_points else 0
+    # Determine whether distances need flipping so that the lowest-easting
+    # end equals distance=0.  For standard PAIS east-to-west transects the
+    # first vertex is the easternmost, so we flip.
+    start_easting = geometry.coords[0][0]
+    end_easting   = geometry.coords[-1][0]
+    flip_distances = start_easting > end_easting
 
-    # Build band config lookup
-    band_configs = {}
-    if raster_index is not None:
-        band_configs = raster_index.band_configs
+    max_distance = sample_points[-1][1] if sample_points else 0.0
 
-    # Open all overlapping rasters
     datasets = []
-    skipped_count = 0  # Track skipped points for aggregated reporting
-    
+    nodata_count = 0
+
     try:
         for raster_path in overlapping_rasters:
             datasets.append(rasterio.open(raster_path))
 
-        # Sample spectral values at each point
         data = []
-        for point, distance in sample_points:
+        for point, arc_distance in sample_points:
+            distance = (max_distance - arc_distance) if flip_distances else arc_distance
+
             try:
-                spectral_values, band_config = sample_raster_at_point(
-                    point, datasets, band_configs
-                )
-
+                spectral_values = sample_raster_at_point(point, datasets, year_config)
                 data.append({
-                    'TransectID': transect_id,
-                    'distance': distance,
-                    'x': point.x,
-                    'y': point.y,  
-                    'red': spectral_values[0],
-                    'green': spectral_values[1],
-                    'blue': spectral_values[2],
-                    'nir': spectral_values[3]  # May be NaN for RGB
+                    "TransectID": transect_id,
+                    "distance":   distance,
+                    "x":          point.x,
+                    "y":          point.y,
+                    "red":        spectral_values[0],
+                    "green":      spectral_values[1],
+                    "blue":       spectral_values[2],
+                    "nir":        spectral_values[3],
                 })
-
             except ValueError:
-                # Point outside coverage - count but don't log each one
-                skipped_count += 1
-                continue
-
-        # For east_to_west transects, reverse the data order so westmost point comes first
-        # This ensures plotting from left to right shows west->east
-        if direction == 'east_to_west':
-            data.reverse()
-            # Recalculate distances from 0 to max in the new order
-            for i, point_data in enumerate(data):
-                point_data['distance'] = max_distance - point_data['distance']
+                # Point is outside coverage or in nodata — insert NaN row
+                # for interpolation below rather than silently dropping it.
+                data.append({
+                    "TransectID": transect_id,
+                    "distance":   distance,
+                    "x":          point.x,
+                    "y":          point.y,
+                    "red":        np.nan,
+                    "green":      np.nan,
+                    "blue":       np.nan,
+                    "nir":        np.nan,
+                })
+                nodata_count += 1
 
     finally:
-        # Close all raster datasets
         for dataset in datasets:
             dataset.close()
 
     if not data:
         raise ValueError(
-            f"No valid spectral samples obtained for transect {transect_id}"
+            f"No sample points generated for transect {transect_id}"
         )
 
-    df = pd.DataFrame(data)
-    
-    # Log sampling summary (to file, not console)
-    has_nir = not df['nir'].isna().all()
-    has_blue = not df['blue'].isna().all()
-    
-    # Determine band mode for logging
-    if has_nir and has_blue:
-        band_mode = BAND_CONFIG_4BAND
-    elif has_nir and not has_blue:
-        band_mode = BAND_CONFIG_CIR
-    else:
-        band_mode = BAND_CONFIG_RGB
-    
-    # Summary log includes skip count
-    total_points = len(sample_points)
-    sampled_points = len(df)
-    logger.debug(
-        f"Transect {transect_id}: sampled {sampled_points}/{total_points} points "
-        f"over {df['distance'].max():.1f}m (band_mode={band_mode}, skipped={skipped_count})"
+    # Sort by distance (west → east) so interpolation and downstream consumers
+    # always see a monotonically increasing distance column.
+    df = pd.DataFrame(data).sort_values("distance").reset_index(drop=True)
+
+    # Interpolate over interior nodata gaps (tile seams, missing tiles, etc.)
+    # limit_area='inside' means only gaps bounded by valid data on both sides
+    # are filled — we never extrapolate off the ends of the transect.
+    spectral_cols = ["red", "green", "blue", "nir"]
+    df[spectral_cols] = df[spectral_cols].interpolate(
+        method="linear",
+        limit_area="inside",
     )
 
-    return df, skipped_count
+    fmt = year_config["format"]
+    logger.debug(
+        f"Transect {transect_id}: {len(sample_points) - nodata_count}/{len(sample_points)} "
+        f"valid points, {nodata_count} interpolated, format={fmt}, "
+        f"distance range={df['distance'].min():.1f}–{df['distance'].max():.1f}m"
+    )
 
-
-def validate_spectral_data(df: pd.DataFrame, require_nir: bool = False) -> bool:
-    """
-    Validate spectral data for quality issues.
-
-    Args:
-        df: DataFrame with spectral band columns
-        require_nir: If True, require non-NaN NIR values
-
-    Returns:
-        True if valid, raises ValueError otherwise
-
-    Raises:
-        ValueError: If data quality issues detected
-    """
-    # Determine which bands to validate
-    if require_nir:
-        bands_to_check = ['red', 'green', 'blue', 'nir']
-    else:
-        # For 3-band data, only check RGB (allow NaN in NIR)
-        bands_to_check = ['red', 'green', 'blue']
-    
-    # Check for missing values in required bands
-    for band in bands_to_check:
-        if df[band].isnull().any():
-            if band == 'nir' and not require_nir:
-                continue  # Allow NaN in NIR for 3-band data
-            if band == 'blue':
-                # Allow NaN in Blue for CIR data
-                continue
-            raise ValueError(f"Spectral data contains NaN values in {band} band")
-
-    # Check for negative values (invalid reflectance)
-    for band in bands_to_check:
-        if (df[band].dropna() < 0).any():
-            raise ValueError(f"Spectral data contains negative values in {band} band")
-
-    # Check for unreasonable values (assuming 8-bit or 16-bit data)
-    for band in bands_to_check:
-        max_val = df[band].dropna().max()
-        if max_val > 65535:
-            logger.warning(
-                f"Spectral values in {band} exceed expected range (max={max_val})"
-            )
-
-    # Check distance monotonicity (should be increasing regardless of sign)
-    if not df['distance'].is_monotonic_increasing:
-        raise ValueError("Distance values are not monotonically increasing")
-
-    return True
+    return df, nodata_count

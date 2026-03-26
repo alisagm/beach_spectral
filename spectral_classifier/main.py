@@ -24,7 +24,6 @@ from .utils import (
     validate_output_directory,
     calculate_processing_stats,
     print_processing_summary,
-    detect_transect_direction,
     ProgressTracker,
     export_shell_line_geojson
 )
@@ -103,12 +102,6 @@ def analyze_all_transects(
     logger.info("Step 3: Checking CRS compatibility...")
     transects = reproject_if_needed(transects, raster_index.crs)
 
-    # Detect transect direction from first transect
-    first_transect = transects.iloc[0]
-    direction = detect_transect_direction(first_transect.geometry)
-    logger.info(f"Detected transect direction: {direction}")
-    logger.info(f"All transects will be plotted with west at 0m (lowest easting on left)")
-
     # Step 4: Process each transect with progress tracking
     logger.info(f"Step 4: Processing {len(transects)} transects...")
     print(f"\nProcessing {len(transects)} transects...")
@@ -128,7 +121,6 @@ def analyze_all_transects(
                 raster_index,
                 idx + 1,
                 len(transects),
-                direction,
                 boundary_types
             )
             all_results.append(result)

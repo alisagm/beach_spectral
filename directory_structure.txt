@@ -1,0 +1,53 @@
+beach_spectral/
+├── INPUT/
+│      ├── analysis_footprint.geojson		# target area footprint
+│      ├── band_config.json              	# NIR bands and Otsu thresholds per year
+│      └── shorelineTransPais.json			# shore transects
+├── OUTPUT/
+├── PAIS_alldata/
+│      ├── features/         
+│      ├── imagery/           
+│      └── imagery_clipped/              	# imagery for analytical pipeline (already clipped to footprint)
+├── spectral_classifier/
+│      ├── __init__.py          			# Package exports
+│      ├── config.py            			# Configuration and thresholds
+│      ├── main.py              			# Pipeline orchestration
+│      ├── run.py               			# CLI entry point
+│      │
+│      ├── spectral/            			# Spectral analysis
+│      │   ├── __init__.py
+│      │   ├── sampler.py       			# Value extraction along transects
+│      │   └── features.py      			# Feature computation (REUSABLE)
+│      │
+│      ├── transition/          			# Boundary detection
+│      │   ├── __init__.py
+│      │   ├── nir.py           			# NIR-based detection
+│      │   ├── rgb.py           			# RGB fallback detection
+│      │   └── shell_line.py    			# TransitionDetector class
+│      │
+│      ├── utils/               			# Utilities
+│      │   ├── __init__.py
+│      │   ├── data_io.py       			# Raster/GeoJSON loading
+│      │   ├── export.py        			# CSV/JSON export
+│      │   ├── batch.py         			# Year-based batch processing
+│      │   ├── footprint_clip.py  			# trimming NoData for large mosaics
+│      │   ├── helpers.py  					# miscellaneous helper functions
+│      │   └── logging_config.py
+│      │
+│      ├── visualization/       			# Plotting
+│      │   ├── __init__.py
+│      │   └── plotting.py      			# Diagnostic visualizations
+│      │
+│      └── optional/            			# Non-essential modules
+│          ├── __init__.py
+│          ├── landcover_classifier.py  	# Point classification
+│          └── boundary_types.py        	# Veg/waterline detection
+└── tools/
+	   ├── assign_band_config.py     		# Streamlined band configuration assignment (run once, already done)
+	   ├── assign_band_labels.py      		# band assignment pt 1 - DEPRECATED
+	   ├── clip_imagery_to_footprint.py     # imagery clipping using windowed I/O (run once, already done)
+	   ├── compute_band_cv.py      			# band assignment pt 2 - DEPRECATED
+	   ├── convert_to_tif.bat      			# Format conversion tool (run once, already done)
+	   ├── reproject_crs_mismatch.py      	# CRS adjustment (run once, already done)
+       ├── validate_shorelines.py      		# Validation vs manual shorelines
+       └── DEPRECATED_HEURISTICS.md    		# Historical approaches

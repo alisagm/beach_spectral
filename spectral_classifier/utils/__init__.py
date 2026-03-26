@@ -37,9 +37,6 @@ from .logging_config import (
     ProgressTracker
 )
 
-# Miscellaneous helpers
-from .helpers import detect_transect_direction
-
 # Batch processing utilities
 from .batch import (
     extract_year_from_path,
