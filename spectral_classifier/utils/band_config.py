@@ -93,3 +93,19 @@ def resolve_band_indices(year_config: dict) -> Dict[str, Optional[int]]:
             f"Unrecognised format '{year_config['format']}'. "
             "Expected one of: RGB, CIR, RGBNIR, RGBN, 4BAND."
         )
+    
+def band_mode_from_indices(band_indices: dict) -> str:
+    """
+    Derive band mode string from resolved band indices.
+
+    Returns:
+        '4band' if NIR and blue are both present
+        'cir'   if NIR is present but blue is not
+        'rgb'   if NIR is absent
+    """
+    if band_indices["nir"] is not None and band_indices["blue"] is not None:
+        return "4band"
+    elif band_indices["nir"] is not None:
+        return "cir"
+    else:
+        return "rgb"
