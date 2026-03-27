@@ -10,21 +10,22 @@ def compute_band_derivative(values: np.ndarray, distance: np.ndarray) -> np.ndar
     d1 = np.gradient(values, distance)
     return d1
 
-def compute_derivative_smooth(values: np.ndarray, smooth_size: int=3) -> np.ndarray:
+def compute_derivative_smooth(values: np.ndarray, distance: np.ndarray, smooth_size: int=3) -> np.ndarray:
     """Smoothed first derivative of spectral band."""
-    d1 = compute_band_derivative().values
-    d1_smooth = uniform_filter1d(d1, size=3, mode='nearest')
-    return d1_smooth
+    smooth = uniform_filter1d(values, size=smooth_size, mode='nearest')
+    return np.gradient(smooth, distance)
 
-def compute_derivative_multiscale(values: np.ndarray, distance: np.ndarray, scales = (5,7,9,11)) -> dict[str, np.ndarray]:
-    """Derivative of spectral band at multiple smoothing scales."""
+def compute_derivative_multiscale(values: np.ndarray, distance: np.ndarray, 
+                                  name: str, scales = (5,7,9,11)) -> dict[str, np.ndarray]:
+    """Derivative of spectral band at multiple smoothing scales.
+        Args:
+        name: Band or signal name used as dict key prefix, e.g. 'nir' or
+              'brightness_rgb'. Output keys will be '{name}_d1_w{window}'.
+    """
     derivatives = {}
-
     for window in scales:
         smooth = uniform_filter1d(values, size=window, mode='nearest')
-        smooth_d1 = np.gradient(smooth, distance)
-        derivatives[f'{values}_d1_w{window}'] = np.ndarray(smooth_d1)
-
+        derivatives[f'{name}_d1_w{window}'] = np.gradient(smooth, distance)    
     return derivatives
 
 def compute_second_derivative(values: np.ndarray, distance: np.ndarray, window_size: int = 7) -> np.ndarray:

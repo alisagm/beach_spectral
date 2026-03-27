@@ -27,9 +27,10 @@ from .utils import (
     print_processing_summary,
     ProgressTracker,
     export_shell_line_geojson,
-    extract_year_from_path
+    extract_year_from_path,
+    resolve_band_indices
 )
-from .spectral import sample_transect, validate_spectral_data, SpectralFeatures
+from .spectral import sample_transect, compute_all
 from .transition import TransitionDetector
 from .visualization.plotting import plot_transect_analysis
 from .optional import LandcoverClassifier
@@ -224,7 +225,6 @@ def process_single_transect(
         raster_index: RasterIndex object (includes band configurations)
         current_idx: Current transect number
         total: Total number of transects
-        direction: Transect direction ('west_to_east' or 'east_to_west')
         boundary_types: Which boundary types to return
             - 'shore_only': BEACH_DRY->BEACH_WET only (swash/shell line)
             - 'waterline': Shore + BEACH_WET->WATER boundaries
@@ -259,13 +259,11 @@ def process_single_transect(
         year_config,
         raster_index=raster_index
     )
-    validate_spectral_data(spectral_data)
 
     logger.debug(f"  Sampled {len(spectral_data)} points (skipped {skipped_points})")
 
     # Extract features
-    feature_extractor = SpectralFeatures(spectral_data)
-    features = feature_extractor.compute_all()
+    features = compute_all(spectral_data, resolve_band_indices(year_config))
 
     logger.debug(f"  Computed {len(features.columns)} features")
 

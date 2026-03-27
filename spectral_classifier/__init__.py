@@ -39,7 +39,7 @@ from .utils import (
     reproject_if_needed,
     find_overlapping_rasters  
 )
-from .spectral import SpectralFeatures, sample_transect
+from .spectral import sample_transect
 from .transition import TransitionDetector
 from .visualization import plot_transect_analysis
 from .config import THRESHOLDS, LANDCOVER_CLASSES, LANDCOVER_COLORS
@@ -57,7 +57,6 @@ __all__ = [
 
     # Processing
     'sample_transect',
-    'SpectralFeatures',
     'LandcoverClassifier',
     'TransitionDetector',
 

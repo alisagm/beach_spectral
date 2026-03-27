@@ -11,32 +11,31 @@ from spectral_classifier.config import EPSILON
 
 def compute_ndvi(nir, red, epsilon=EPSILON) -> np.ndarray:
     """Normalized Difference Vegetation Index."""
-    ndvi = (nir - red) / (nir + red + EPSILON)
+    ndvi = (nir - red) / (nir + red + epsilon)
     return ndvi
 
 def compute_ndwi(green, nir, epsilon=EPSILON) -> np.ndarray:
     """Normalized Difference Water Index."""
-    ndwi = (green - nir) / (green + nir + EPSILON)
+    ndwi = (green - nir) / (green + nir + epsilon)
     return ndwi
 
-def compute_nir_ratio(nir, rgb_mean, epsilon=EPSILON) -> np.ndarray:
+def compute_nir_ratio(nir, brightness_rgb, epsilon=EPSILON) -> np.ndarray:
     """NIR prominence relative to visible bands."""
-    rgb_mean = [['red', 'green', 'blue']].mean(axis=1)
-    nir_ratio = nir / (rgb_mean + EPSILON)
+    nir_ratio = nir / (brightness_rgb + epsilon)
     return nir_ratio
 
 # ========================================================================
 # RGB-based indices (always available)
 # ========================================================================
 
-def compute_brightness(bands: list[np.ndarray]) -> np.ndarray:
+def compute_brightness(bands: np.ndarray) -> np.ndarray:
     """Overall reflectance (mean of all available bands)."""
     brightness = bands.mean(axis=1)
     return brightness
 
 def compute_blue_red_ratio(blue, red, epsilon=EPSILON) -> np.ndarray:
     """Blue to red ratio (water indicator)."""
-    br_ratio = blue / (red + EPSILON)
+    br_ratio = blue / (red + epsilon)
     return br_ratio
 
 def compute_red_green_ratio(red, green, epsilon=EPSILON) -> np.ndarray:
@@ -52,5 +51,5 @@ def compute_red_green_ratio(red, green, epsilon=EPSILON) -> np.ndarray:
     Returns:
     Series with red/green ratio values
     """
-    rg_ratio = red / (green + EPSILON)
+    rg_ratio = red / (green + epsilon)
     return rg_ratio
