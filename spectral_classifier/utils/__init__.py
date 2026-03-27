@@ -17,10 +17,7 @@ from .data_io import (
     load_transects,
     reproject_if_needed,
     find_overlapping_rasters,
-    RasterIndex,
-    BAND_CONFIG_4BAND,
-    BAND_CONFIG_CIR,
-    BAND_CONFIG_RGB
+    RasterIndex
 )
 
 # Export utilities
@@ -46,9 +43,7 @@ from .logging_config import (
 from .batch import (
     extract_year_from_path,
     extract_capture_date_from_path,
-    group_rasters_by_year,
-    resolve_year_band_config,
-    detect_cir_from_filename
+    group_rasters_by_year
 )
 
 # Footprint clipping
@@ -68,9 +63,6 @@ __all__ = [
     'reproject_if_needed',
     'find_overlapping_rasters',
     'RasterIndex',
-    'BAND_CONFIG_4BAND',
-    'BAND_CONFIG_CIR',
-    'BAND_CONFIG_RGB',
     # Export
     'export_results_to_csv',
     'export_summary_json',
@@ -88,8 +80,6 @@ __all__ = [
     'extract_year_from_path',
     'extract_capture_date_from_path',
     'group_rasters_by_year',
-    'resolve_year_band_config',
-    'detect_cir_from_filename',
     # Footprint
     'clip_line_to_footprint',
     'get_raster_valid_footprint',

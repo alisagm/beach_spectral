@@ -35,14 +35,13 @@ from typing import List, Optional
 # Import from spectral_classifier package
 from spectral_classifier.main import analyze_all_transects
 from spectral_classifier.utils import (
+    load_band_config,
     setup_logging,
     group_rasters_by_year,
-    resolve_year_band_config,
     validate_output_directory,
     bundle_shell_lines_to_gpkg,
 )
-from spectral_classifier.config import DEFAULT_BOUNDARY_TYPES
-
+from spectral_classifier.config import DEFAULT_BOUNDARY_TYPES, BAND_CONFIG_PATH
 
 def parse_args():
     """Parse command line arguments."""
@@ -123,7 +122,6 @@ def process_year(
     raster_paths: List[Path],
     transect_file: Path,
     output_root: Path,
-    band_mode_override: Optional[str],
     boundary_types: str,
     verbose: bool,
     diagnostic_transect_id: int
@@ -136,7 +134,6 @@ def process_year(
         raster_paths: List of raster files for this year
         transect_file: Path to transects GeoJSON
         output_root: Root output directory
-        band_mode_override: Force band mode (None for auto)
         boundary_types: Which boundaries to detect
         verbose: Enable verbose logging
         diagnostic_transect_id: Transect ID for diagnostic plot
@@ -152,35 +149,16 @@ def process_year(
     print(f"  Output: {year_output_dir}")
     print(f"{'='*60}")
     
-    try:
-        # Resolve band configuration for this year
-        # Priority: 4band > cir > rgb (favors NIR-based detection)
-        if band_mode_override and band_mode_override != 'auto':
-            band_config = band_mode_override
-            valid_paths = raster_paths
-        else:
-            band_config, valid_paths = resolve_year_band_config(raster_paths)
-        
-        print(f"  Band mode: {band_config}")
-        print(f"  Valid rasters: {len(valid_paths)}/{len(raster_paths)}")
-        
-        if not valid_paths:
-            print(f"  ERROR: No valid rasters for year {year}")
-            return False
-        
-        # Create temporary directory with symlinks or use first raster's parent
-        # For now, assume all rasters are in same directory structure
-        raster_dir = valid_paths[0].parent
-        
+    try:        
         # Run analysis
         results = analyze_all_transects(
-            raster_dir=raster_dir,
+            raster_paths=raster_paths,
+            year=year,
             transect_geojson=transect_file,
             output_dir=year_output_dir,
-            year=year,
+            band_config_path=BAND_CONFIG_PATH,
             verbose=verbose,
             boundary_types=boundary_types,
-            band_config_override=band_config if band_config != '4band' else None
         )
         
         print(f"  Processed: {len(results)} transects")
@@ -273,7 +251,6 @@ def main():
             raster_paths=years_data[year],
             transect_file=args.transects,
             output_root=args.output,
-            band_mode_override=args.band_mode if args.band_mode != 'auto' else None,
             boundary_types=args.boundary_types,
             verbose=args.verbose,
             diagnostic_transect_id=args.diagnostic_transect

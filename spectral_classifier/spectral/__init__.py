@@ -7,7 +7,13 @@ This module handles:
 
 Submodules:
     - sampler: Extract spectral values at points along transects
-    - features: Compute spectral features for classification/detection
+    - features: Computation wrapper of spectral features for classification/detection
+
+    Internal modules (not exported):
+        - spectral_indices: Spectral index functions
+        - derivatives: Band derivatives with multiscale smoothing
+        - window_features: Statistical features using sliding windows
+        - detection_features: Categorical detection of spectral angle, oscillation, foam peaks
 """
 
 from .sampler import (

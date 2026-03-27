@@ -12,7 +12,6 @@ from typing import List, Dict
 
 from spectral_classifier.config import NUM_TRANSECTS_TO_VISUALIZE, VERBOSE, DEFAULT_BOUNDARY_TYPES, BAND_CONFIG_PATH
 from .utils import (
-    load_band_config,
     build_raster_index,
     load_transects,
     reproject_if_needed,
@@ -27,8 +26,8 @@ from .utils import (
     print_processing_summary,
     ProgressTracker,
     export_shell_line_geojson,
-    extract_year_from_path,
-    resolve_band_indices
+    resolve_band_indices,
+    load_band_config
 )
 from .spectral import sample_transect, compute_all
 from .transition import TransitionDetector
@@ -39,7 +38,8 @@ logger = logging.getLogger(__name__)
 
 
 def analyze_all_transects(
-    raster_dir: Path,
+    raster_paths: List[Path],        
+    year: str,                       
     transect_geojson: Path,
     output_dir: Path,
     band_config_path: Path = BAND_CONFIG_PATH,
@@ -80,8 +80,7 @@ def analyze_all_transects(
     # Step 1: Build raster spatial index 
     logger.info("Step 1: Building raster spatial index...")
     print("Building raster spatial index...")
-    raster_index = build_raster_index(raster_dir)
-    year = extract_year_from_path(raster_dir)
+    raster_index = build_raster_index(raster_paths)
 
     # Step 2: Load band configuration from band_config.json
     year_config = load_band_config(BAND_CONFIG_PATH, year)
@@ -159,7 +158,7 @@ def analyze_all_transects(
         all_results,
         output_dir,
         processing_metadata={
-            'raster_dir': str(raster_dir),
+            'raster_dir': str(raster_index),
             'transect_file': str(transect_geojson),
             'raster_crs': str(raster_index.crs),
             'band_config': year_config

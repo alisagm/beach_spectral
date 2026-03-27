@@ -3,18 +3,14 @@ Batch processing utilities for year-based imagery processing.
 
 Provides helper functions for:
 - Extracting dates/years from file paths
-- Classifying rasters by band configuration
 - Grouping imagery by year
-- Resolving band configuration at the year level
 """
 
 import re
 import logging
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List
 from collections import defaultdict
-
-import rasterio
 
 logger = logging.getLogger(__name__)
 
