@@ -381,7 +381,7 @@ Band configuration is auto-detected per raster file.
     # Run pipeline
     try:
         results = analyze_all_transects(
-            raster_dir=args.rasters,
+            raster_paths=args.rasters,
             transect_geojson=args.transects,
             output_dir=args.output,
             num_visualize=args.num_visualize,

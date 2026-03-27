@@ -34,7 +34,7 @@ def compute_all(data: pd.DataFrame, band_indices: dict) -> pd.DataFrame:
     Compute all spectral features for a single transect profile.
 
     Args:
-        data:         DataFrame with columns [distance, red, green, blue, nir].
+        data:         DataFrame with columns [TransectID, distance, x, y, red, green, blue, nir].
                       nir column must be present but may be NaN for RGB imagery.
         band_indices: Output of resolve_band_indices(year_config). Determines
                       which features are computed — no column scanning performed.
