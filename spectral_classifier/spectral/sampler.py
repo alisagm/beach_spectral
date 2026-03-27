@@ -25,7 +25,7 @@ import pandas as pd
 import rasterio
 from shapely.geometry import LineString, Point
 from ..config import SAMPLING_INTERVAL
-from utils import resolve_band_indices
+from ..utils import resolve_band_indices
 
 logger = logging.getLogger(__name__)
 

@@ -33,7 +33,7 @@ from datetime import datetime
 from typing import List, Optional
 
 # Import from spectral_classifier package
-from spectral_classifier.main import analyze_all_transects
+from .main import analyze_all_transects
 from spectral_classifier.utils import (
     load_band_config,
     setup_logging,
