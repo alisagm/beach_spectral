@@ -49,7 +49,6 @@ from datetime import datetime
 from typing import List, Optional
 
 from .compute import run_compute
-from .plot import run_plots
 from spectral_classifier.utils import (
     setup_logging,
     group_rasters_by_year,
@@ -287,6 +286,7 @@ def _plot_year(
         print(f"  [plot] Transect selection: all transects (this may be slow)")
 
     try:
+        from .plot import run_plots  # deferred: only imported when plot step runs
         run_plots(
             year=int(year),
             profiles_path=profiles_path,
