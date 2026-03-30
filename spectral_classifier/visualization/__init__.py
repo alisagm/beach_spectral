@@ -7,11 +7,16 @@ Provides plotting functions for:
 - Diagnostic plots for validation
 """
 
-from .plotting import (
+from .plotting_old import (
     plot_transect_analysis,
     # Additional functions will be exposed as plotting.py is refactored
 )
-
+from .plotting import (
+    plot_spectral_single,
+    plot_spectral_grid
+)
 __all__ = [
     'plot_transect_analysis',
+    'plot_spectral_single',
+    'plot_spectral_grid'
 ]

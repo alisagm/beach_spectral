@@ -11,6 +11,9 @@ SAMPLING_INTERVAL = 1.0  # meters - distance between sample points along transec
 # Visualization configuration
 NUM_TRANSECTS_TO_VISUALIZE = 5  # Number of representative transects to plot
 
+PLOT_GRID_COLS: int = 4 # number of columns to plot in multi-transect plots
+PLOT_GRID_ROWS: int = 4 # number of rows for multi-transect plots
+
 # Boundary detection output configuration
 # Controls which boundary types are returned by main processing pipeline
 # Options:

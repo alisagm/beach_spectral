@@ -5,452 +5,331 @@ X-axis convention
 -----------------
 All plot functions use ``distance`` (arc-length from the lowest-easting /
 west end of the transect, as produced by ``sampler.sample_transect``) as the
-x-axis.  This guarantees that west is always on the left and east is always
-on the right without any directional flag.
+x-axis.  West is always on the left, east always on the right.
+
+Public API
+----------
+plot_spectral_single(transect_id, profiles_path, output_dir, features_path)
+    Convenience wrapper: loads parquet, filters one transect, renders PNG.
+    Use for ad-hoc inspection.
+
+plot_spectral_grid(transect_ids, profiles_df, output_dir, features_df)
+    Renders a multi-panel overview figure (ncols × nrows per page).
+    Caller supplies pre-loaded DataFrames; no I/O inside this function.
+    Use from run_plots() where the full parquet is already in memory.
+
+Private helpers
+---------------
+_render_spectral_axes   — pure matplotlib; no I/O; called by both public fns
+_plot_nir_derivative    — secondary y-axis overlay; called by _render_spectral_axes
+_get_spectral_ylim      — robust y-limit calculation
+_safe_percentile        — NaN/Inf-safe percentile
 """
 
 import logging
 from pathlib import Path
-from typing import List, Dict
+from typing import Optional, List
+
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.colors import ListedColormap
-from ..config import LANDCOVER_COLORS
-from ..transition import TransitionDetector
+
+from ..config import PLOT_GRID_COLS, PLOT_GRID_ROWS
 
 logger = logging.getLogger(__name__)
 
+# ── Band display config ────────────────────────────────────────────────────────
 
-def _safe_percentile(values: np.ndarray, percentile: float, default: float = 0.0) -> float:
-    """
-    Compute percentile with NaN/Inf handling.
-    
-    Args:
-        values: Array of values (may contain NaN/Inf)
-        percentile: Percentile to compute (0-100)
-        default: Value to return if computation fails
-        
-    Returns:
-        Percentile value, or default if all values are invalid
-    """
-    valid_values = values[np.isfinite(values)]
-    
-    if len(valid_values) == 0:
-        logger.warning(f"No valid values for percentile calculation, using default={default}")
+_BAND_STYLE = {
+    "red":   dict(color="red",     linewidth=1.5, label="Red",   alpha=0.85),
+    "green": dict(color="green",   linewidth=1.5, label="Green", alpha=0.85),
+    "blue":  dict(color="steelblue", linewidth=1.5, label="Blue",  alpha=0.85),
+    "nir":   dict(color="darkred", linewidth=1.5, label="NIR",   alpha=0.85,
+                  linestyle="--"),
+}
+
+_NIR_DERIV_COLOR  = "darkorange"
+_NIR_DERIV_THRESH = -3.0          # same threshold used in TransitionDetector
+
+
+# ── Private helpers ────────────────────────────────────────────────────────────
+
+def _safe_percentile(values: np.ndarray, percentile: float,
+                     default: float = 0.0) -> float:
+    """Return *percentile* of *values*, ignoring NaN/Inf; fall back to *default*."""
+    valid = values[np.isfinite(values)]
+    if len(valid) == 0:
+        logger.warning(
+            "No valid values for percentile calculation; using default=%s", default
+        )
         return default
-    
-    return float(np.percentile(valid_values, percentile))
+    return float(np.percentile(valid, percentile))
 
 
-def _get_spectral_ylim(data: pd.DataFrame) -> tuple:
+def _get_spectral_ylim(profile_df: pd.DataFrame) -> tuple[float, float]:
     """
-    Calculate safe y-axis limits for spectral data.
-    
-    Args:
-        data: DataFrame with red, green, blue, nir columns
-        
-    Returns:
-        Tuple of (y_min, y_max) with safe defaults if data is invalid
+    Compute robust y-axis limits from spectral band columns.
+
+    Uses 1st–99th percentile range with a small margin, falling back to
+    (0, 255) if no valid values exist.
     """
-    all_values = []
-    for band in ['red', 'green', 'blue', 'nir']:
-        if band in data.columns:
-            band_values = data[band].values
-            all_values.extend(band_values[np.isfinite(band_values)])
-    
+    all_values: List[float] = []
+    for band in ("red", "green", "blue", "nir"):
+        if band in profile_df.columns:
+            vals = profile_df[band].values
+            all_values.extend(vals[np.isfinite(vals)])
+
     if not all_values:
-        logger.warning("No valid spectral values found, using default y-limits")
-        return (0, 255)  # Default for 8-bit imagery
-    
-    all_values = np.array(all_values)
-    
-    y_min = max(0, _safe_percentile(all_values, 1, 0) - 20)
-    y_max = _safe_percentile(all_values, 99, 255) + 20
-    
+        logger.warning("No valid spectral values; using default y-limits (0, 255)")
+        return (0.0, 255.0)
+
+    arr = np.array(all_values)
+    y_min = max(0.0, _safe_percentile(arr, 1, 0.0) - 20.0)
+    y_max = _safe_percentile(arr, 99, 255.0) + 20.0
+
     if y_max <= y_min:
-        y_max = y_min + 100
-    
+        y_max = y_min + 100.0
+
     return (y_min, y_max)
 
 
-def plot_transect_analysis(
-    result: Dict,
-    output_dir: Path,
-    show_transitions: bool = True,
-    figsize: tuple = (14, 8)
-) -> Path:
+def _plot_nir_derivative(ax: plt.Axes,
+                         features_df: pd.DataFrame) -> plt.Axes:
     """
-    Create comprehensive visualization of transect analysis with NIR derivative overlay.
-
-    The x-axis is ``distance`` (metres from the west / lowest-easting end of the
-    transect), so west is always on the left.
+    Overlay the smoothed NIR first derivative on a secondary y-axis.
 
     Args:
-        result: Dictionary with transect analysis results
-        output_dir: Directory to save plot
-        show_transitions: Whether to mark transition zones
-        figsize: Figure size in inches
+        ax:          Primary spectral axes.
+        features_df: DataFrame containing ``distance`` and ``nir_d1_smooth``.
 
     Returns:
-        Path to saved figure
-    """
-    transect_id = result['transect_id']
-    data = result['data']
-    features = result.get('features', data)
-    landcover = result['landcover']
-    transitions = result.get('transitions', [])
-
-    logger.debug(f"Plotting transect {transect_id} with NIR derivative overlay")
-
-    if len(data) == 0:
-        logger.warning(f"Transect {transect_id} has no data to plot")
-        return None
-
-    # Filter transitions to only show shore boundaries (shell line)
-    if transitions:
-        shore_transitions = [t for t in transitions
-                            if TransitionDetector.is_shore_boundary(t)]
-        logger.debug(
-            f"Filtered {len(transitions)} transitions -> "
-            f"{len(shore_transitions)} shore boundaries for plotting"
-        )
-        transitions = shore_transitions
-
-    fig, ax = plt.subplots(figsize=figsize)
-
-    y_min, y_max = _get_spectral_ylim(data)
-    ax.set_ylim(y_min, y_max)
-
-    _plot_classification_background(ax, data, landcover)
-    _plot_spectral_bands(ax, data)
-
-    ax2 = None
-    if 'nir_d1_smooth' in features.columns:
-        ax2 = _plot_nir_derivative(ax, features)
-
-    if show_transitions and transitions:
-        _plot_transitions_with_annotations(ax, transitions, data, ax2)
-
-    ax.set_xlabel('Distance from West (m)', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Spectral Value (DN)', fontsize=12, fontweight='bold')
-    ax.set_title(
-        f'Spectral Profile with Transitions - Transect {transect_id}',
-        fontsize=14,
-        fontweight='bold',
-        pad=15
-    )
-    ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
-    ax.legend(loc='upper left', fontsize=10, framealpha=0.9)
-
-    plt.tight_layout()
-
-    output_path = Path(output_dir) / f'transect_{transect_id}_analysis.png'
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.close()
-
-    logger.debug(f"Saved plot to {output_path}")
-
-    return output_path
-
-
-def _plot_classification_background(
-    ax: plt.Axes,
-    data: pd.DataFrame,
-    landcover: pd.DataFrame
-):
-    """Plot color-coded background regions for landcover classes."""
-    classes = landcover['predicted_class'].values
-    distances = data['distance'].values
-
-    if len(classes) == 0 or len(distances) == 0:
-        return
-
-    y_min, y_max = ax.get_ylim()
-
-    current_class = classes[0]
-    start_dist = distances[0]
-
-    for i in range(1, len(classes)):
-        if classes[i] != current_class or i == len(classes) - 1:
-            end_dist = distances[i] if i < len(classes) - 1 else distances[-1]
-
-            color = LANDCOVER_COLORS.get(current_class, '#808080')
-
-            ax.axvspan(
-                start_dist,
-                end_dist,
-                alpha=0.2,
-                color=color,
-                zorder=0
-            )
-
-            current_class = classes[i]
-            start_dist = distances[i]
-
-
-def _plot_spectral_bands(ax: plt.Axes, data: pd.DataFrame):
-    """Plot spectral band profiles."""
-    distance = data['distance']
-
-    ax.plot(distance, data['red'],   color='red',     linewidth=1.5, label='Red',   alpha=0.8)
-    ax.plot(distance, data['green'], color='green',   linewidth=1.5, label='Green', alpha=0.8)
-
-    if 'blue' in data.columns and not data['blue'].isna().all():
-        ax.plot(distance, data['blue'], color='blue', linewidth=1.5, label='Blue', alpha=0.8)
-
-    if 'nir' in data.columns and not data['nir'].isna().all():
-        ax.plot(distance, data['nir'], color='darkred', linewidth=1.5, label='NIR',
-                alpha=0.8, linestyle='--')
-
-
-def _plot_nir_derivative(
-    ax: plt.Axes,
-    features: pd.DataFrame
-) -> plt.Axes:
-    """
-    Plot NIR derivative on secondary y-axis.
-
-    Args:
-        ax: Primary axes with spectral bands
-        features: DataFrame with nir_d1_smooth column
-
-    Returns:
-        Secondary y-axis
+        The secondary axes (twinx), even if no valid data were found.
     """
     ax2 = ax.twinx()
 
-    distance = features['distance']
-    nir_d1 = features['nir_d1_smooth']
+    nir_d1 = features_df["nir_d1_smooth"]
+    valid   = nir_d1[np.isfinite(nir_d1)]
 
-    valid_deriv = nir_d1[np.isfinite(nir_d1)]
-    if len(valid_deriv) == 0:
+    if len(valid) == 0:
         logger.warning("No valid NIR derivative values to plot")
         return ax2
 
     ax2.plot(
-        distance,
-        nir_d1,
-        color='darkorange',
-        linewidth=1.5,
-        alpha=0.7,
-        label='NIR d/dx',
-        linestyle='-.'
+        features_df["distance"], nir_d1,
+        color=_NIR_DERIV_COLOR, linewidth=1.5, alpha=0.7,
+        label="NIR d/dx", linestyle="-.",
     )
+    ax2.axhline(_NIR_DERIV_THRESH, color="red",  linestyle="--",
+                linewidth=1.0, alpha=0.5, label="Boundary threshold")
+    ax2.axhline(0,                 color="gray", linestyle=":",
+                linewidth=0.5, alpha=0.5)
 
-    ax2.axhline(-3.0, color='red',  linestyle='--', linewidth=1,   alpha=0.5, label='Boundary threshold')
-    ax2.axhline( 0,   color='gray', linestyle=':',  linewidth=0.5, alpha=0.5)
+    abs_max = max(abs(valid.max()), abs(valid.min()))
+    if abs_max == 0 or not np.isfinite(abs_max):
+        abs_max = 10.0
+    ax2.set_ylim(-abs_max * 1.2, abs_max * 1.2)
 
-    ax2.set_ylabel('NIR Derivative (units/m)', fontsize=11, fontweight='bold', color='darkorange')
-    ax2.tick_params(axis='y', labelcolor='darkorange')
-
-    deriv_abs_max = max(abs(valid_deriv.max()), abs(valid_deriv.min()))
-    if deriv_abs_max == 0 or not np.isfinite(deriv_abs_max):
-        deriv_abs_max = 10
-    ax2.set_ylim(-deriv_abs_max * 1.2, deriv_abs_max * 1.2)
-
-    ax2.legend(loc='upper right', fontsize=9, framealpha=0.9)
+    ax2.set_ylabel("NIR Derivative (units/m)", fontsize=10,
+                   fontweight="bold", color=_NIR_DERIV_COLOR)
+    ax2.tick_params(axis="y", labelcolor=_NIR_DERIV_COLOR)
+    ax2.legend(loc="upper right", fontsize=8, framealpha=0.85)
 
     return ax2
 
 
-def _plot_transitions_with_annotations(
+def _render_spectral_axes(
     ax: plt.Axes,
-    transitions: List[Dict],
-    data: pd.DataFrame,
-    ax2: plt.Axes = None
-):
+    profile_df: pd.DataFrame,
+    features_df: Optional[pd.DataFrame] = None,
+    title: str = "",
+) -> Optional[plt.Axes]:
     """
-    Mark transition zones with precise distance annotations.
+    Draw spectral band profiles onto *ax*.  Pure matplotlib — no I/O.
+
+    Plots whichever of red/green/blue/nir are non-null in *profile_df*.
+    If *features_df* is supplied and contains ``nir_d1_smooth``, a secondary
+    derivative overlay is added via :func:`_plot_nir_derivative`.
 
     Args:
-        ax: Primary axes
-        transitions: List of transition dictionaries (shore boundaries only)
-        data: DataFrame with spectral data
-        ax2: Secondary axes (for derivative), optional
-    """
-    y_min, y_max = ax.get_ylim()
-
-    for transition in transitions:
-        dist = transition['distance']
-
-        ax.axvline(dist, color='purple', linewidth=2.5, alpha=0.7, linestyle=':', zorder=10)
-
-        ax.annotate(
-            '',
-            xy=(dist, y_max * 0.95),
-            xytext=(dist, y_max * 1.02),
-            arrowprops=dict(arrowstyle='->', color='purple', lw=2, alpha=0.8),
-            zorder=11
-        )
-
-        ax.text(
-            dist,
-            y_max * 1.05,
-            f'{dist:.1f}m\nShell Line',
-            fontsize=9,
-            ha='center',
-            va='bottom',
-            color='purple',
-            fontweight='bold',
-            bbox=dict(boxstyle='round,pad=0.4', facecolor='white', edgecolor='purple', alpha=0.9),
-            zorder=12
-        )
-
-
-def plot_summary_statistics(
-    all_results: List[Dict],
-    output_dir: Path
-) -> Path:
-    """
-    Create summary statistics plot across all transects.
-
-    Args:
-        all_results: List of all transect results
-        output_dir: Directory to save plot
+        ax:          Matplotlib axes to draw on.
+        profile_df:  Rows for a single transect; must contain ``distance``.
+        features_df: Optional features rows for the same transect.
+        title:       Axes title string.
 
     Returns:
-        Path to saved figure
+        Secondary axes if a derivative overlay was drawn, else None.
     """
-    logger.debug("Creating summary statistics plot")
-
-    transect_ids = []
-    class_distributions = []
-    num_transitions = []
-
-    for result in all_results:
-        transect_ids.append(result['transect_id'])
-        classes = result['landcover']['predicted_class'].value_counts()
-        class_distributions.append(classes)
-        num_transitions.append(len(result.get('transitions', [])))
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-
-    ax1.bar(range(len(transect_ids)), num_transitions, color='steelblue')
-    ax1.set_xlabel('Transect ID', fontsize=12)
-    ax1.set_ylabel('Number of Transitions', fontsize=12)
-    ax1.set_title('Transitions Detected per Transect', fontsize=14)
-    ax1.set_xticks(range(len(transect_ids)))
-    ax1.set_xticklabels(transect_ids, rotation=45, ha='right')
-    ax1.grid(True, alpha=0.3, axis='y')
-
-    all_classes = pd.concat(class_distributions, axis=1).sum(axis=1)
-    colors = [LANDCOVER_COLORS.get(cls, '#808080') for cls in all_classes.index]
-
-    ax2.pie(
-        all_classes.values,
-        labels=all_classes.index,
-        colors=colors,
-        autopct='%1.1f%%',
-        startangle=90
-    )
-    ax2.set_title('Overall Landcover Distribution', fontsize=14)
-
-    plt.tight_layout()
-
-    output_path = Path(output_dir) / 'summary_statistics.png'
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.close()
-
-    logger.debug(f"Saved summary plot to {output_path}")
-
-    return output_path
-
-
-def plot_spectral_only(
-    transect_id: str,
-    data: pd.DataFrame,
-    output_dir: Path,
-    features: pd.DataFrame = None,
-    figsize: tuple = (14, 6)
-) -> Path:
-    """
-    Create clean spectral profile plot without classification overlay.
-    Designed for manual annotation of training data.
-
-    The x-axis is ``distance`` (metres from the west / lowest-easting end),
-    so west is always on the left and east is always on the right.
-
-    Args:
-        transect_id: Transect identifier
-        data: DataFrame with spectral values (distance, red, green, blue, nir)
-        output_dir: Directory to save plot
-        features: Optional DataFrame with computed features (including nir_d1_smooth)
-        figsize: Figure size in inches
-
-    Returns:
-        Path to saved figure
-    """
-    logger.debug(f"Plotting clean spectral profile for transect {transect_id}")
-
-    if len(data) == 0:
-        logger.warning(f"Transect {transect_id} has no data to plot")
+    if profile_df.empty:
+        ax.text(0.5, 0.5, "no data", transform=ax.transAxes,
+                ha="center", va="center", color="gray", fontsize=9)
         return None
 
-    fig, ax = plt.subplots(figsize=figsize)
-
-    distance = data['distance']
-
-    ax.plot(distance, data['red'],   color='red',   linewidth=2, label='Red',   alpha=0.9)
-    ax.plot(distance, data['green'], color='green', linewidth=2, label='Green', alpha=0.9)
-
-    if 'blue' in data.columns and not data['blue'].isna().all():
-        ax.plot(distance, data['blue'], color='blue', linewidth=2, label='Blue', alpha=0.9)
-
-    if 'nir' in data.columns and not data['nir'].isna().all():
-        ax.plot(distance, data['nir'], color='darkred', linewidth=2, label='NIR',
-                alpha=0.9, linestyle='--')
-
-    ax2 = None
-    if features is not None and 'nir_d1_smooth' in features.columns:
-        ax2 = _plot_nir_derivative(ax, features)
-
-    ax.set_xlabel('Distance from West (m)', fontsize=13, fontweight='bold')
-    ax.set_ylabel('Spectral Value', fontsize=13, fontweight='bold')
-    ax.set_title(
-        f'Spectral Profile - Transect {transect_id}',
-        fontsize=15,
-        fontweight='bold',
-        pad=15
-    )
-
-    ax.grid(True, alpha=0.4, linestyle='-', linewidth=0.5)
-    ax.grid(True, which='minor', alpha=0.2, linestyle=':', linewidth=0.5)
-    ax.minorticks_on()
-
-    ax.legend(loc='upper right' if ax2 is None else 'upper left', fontsize=11, framealpha=0.9)
-
-    y_min, y_max = _get_spectral_ylim(data)
+    distance = profile_df["distance"]
+    y_min, y_max = _get_spectral_ylim(profile_df)
     ax.set_ylim(y_min, y_max)
 
-    ax.tick_params(axis='both', which='major', labelsize=11)
+    for band, style in _BAND_STYLE.items():
+        if band not in profile_df.columns:
+            continue
+        col = profile_df[band]
+        if col.isna().all():
+            continue
+        ax.plot(distance, col, **style)
 
-    plt.tight_layout()
+    ax2 = None
+    if (
+        features_df is not None
+        and not features_df.empty
+        and "nir_d1_smooth" in features_df.columns
+    ):
+        ax2 = _plot_nir_derivative(ax, features_df)
 
-    output_path = Path(output_dir) / f'transect_{transect_id}_clean.png'
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.close()
+    ax.set_xlabel("Distance from west (m)", fontsize=9)
+    ax.set_ylabel("Spectral value (DN)", fontsize=9)
+    ax.grid(True, alpha=0.3, linestyle="--", linewidth=0.5)
+    ax.tick_params(axis="both", labelsize=8)
 
-    logger.debug(f"Saved clean plot to {output_path}")
+    if title:
+        ax.set_title(title, fontsize=9, fontweight="bold", pad=4)
 
+    legend_loc = "upper left" if ax2 is not None else "upper right"
+    ax.legend(loc=legend_loc, fontsize=8, framealpha=0.85)
+
+    return ax2
+
+
+# ── Public functions ───────────────────────────────────────────────────────────
+
+def plot_spectral_single(
+    transect_id: int,
+    profiles_path: Path,
+    output_dir: Path,
+    features_path: Optional[Path] = None,
+    figsize: tuple = (12, 5),
+) -> Optional[Path]:
+    """
+    Render and save a spectral profile PNG for one transect.
+
+    Loads *profiles_path* (and optionally *features_path*) each call.
+    Intended for interactive / ad-hoc use.  For batch rendering, supply
+    pre-loaded DataFrames to :func:`_render_spectral_axes` directly, or
+    use :func:`plot_spectral_grid`.
+
+    Args:
+        transect_id:   Integer transect identifier.
+        profiles_path: Path to ``profiles_{year}.parquet``.
+        output_dir:    Directory to write the PNG into.
+        features_path: Optional path to ``features_{year}.parquet``.
+        figsize:       Matplotlib figure size.
+
+    Returns:
+        Path to the saved PNG, or None if the transect has no data.
+    """
+    profiles_df = pd.read_parquet(profiles_path)
+    profile     = profiles_df[profiles_df["transect_id"] == transect_id]
+
+    if profile.empty:
+        logger.warning("Transect %s not found in %s", transect_id, profiles_path)
+        return None
+
+    features = None
+    if features_path is not None and Path(features_path).exists():
+        features_df = pd.read_parquet(features_path)
+        features    = features_df[features_df["transect_id"] == transect_id]
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    _render_spectral_axes(ax, profile, features,
+                          title=f"Transect {transect_id}")
+
+    output_path = output_dir / f"transect_{transect_id}_profile.png"
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+    logger.debug("Saved %s", output_path)
     return output_path
 
 
-def create_legend_patch(landcover_classes: List[str]) -> List:
+def plot_spectral_grid(
+    transect_ids: List[int],
+    profiles_df: pd.DataFrame,
+    output_dir: Path,
+    features_df: Optional[pd.DataFrame] = None,
+    ncols: int = PLOT_GRID_COLS,
+    nrows: int = PLOT_GRID_ROWS,
+) -> List[Path]:
     """
-    Create legend patches for landcover classes.
+    Render multi-panel overview figures for a list of transects.
+
+    Paginates into figures of *ncols* × *nrows* panels.  Caller is
+    responsible for loading parquets and filtering *transect_ids* to the
+    desired sample before calling this function.
 
     Args:
-        landcover_classes: List of class names
+        transect_ids: Ordered list of transect IDs to plot.
+        profiles_df:  Full (or pre-filtered) profiles DataFrame; will be
+                      filtered per transect_id inside this function.
+        output_dir:   Directory to write ``overview_NNN.png`` files into.
+        features_df:  Optional features DataFrame (same structure).
+        ncols:        Grid columns per page  (default from config).
+        nrows:        Grid rows per page     (default from config).
 
     Returns:
-        List of matplotlib patches
+        List of paths to saved overview PNGs (one per page).
     """
-    patches = []
-    for cls in landcover_classes:
-        color = LANDCOVER_COLORS.get(cls, '#808080')
-        patch = mpatches.Patch(color=color, label=cls, alpha=0.5)
-        patches.append(patch)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    return patches
+    panels_per_page = ncols * nrows
+    saved: List[Path] = []
+
+    # Chunk transect_ids into pages
+    pages = [
+        transect_ids[i : i + panels_per_page]
+        for i in range(0, len(transect_ids), panels_per_page)
+    ]
+
+    for page_idx, page_ids in enumerate(pages, start=1):
+        n_panels = len(page_ids)
+        # Always create a full ncols × nrows grid; blank unused panels
+        fig, axes = plt.subplots(
+            nrows, ncols,
+            figsize=(ncols * 4.5, nrows * 3.0),
+            squeeze=False,
+        )
+        fig.suptitle(
+            f"Spectral profiles — page {page_idx} of {len(pages)}",
+            fontsize=11, fontweight="bold", y=1.01,
+        )
+
+        for panel_idx, tid in enumerate(page_ids):
+            row, col = divmod(panel_idx, ncols)
+            ax = axes[row][col]
+
+            profile  = profiles_df[profiles_df["transect_id"] == tid]
+            features = None
+            if features_df is not None:
+                feat_slice = features_df[features_df["transect_id"] == tid]
+                features   = feat_slice if not feat_slice.empty else None
+
+            _render_spectral_axes(ax, profile, features,
+                                  title=f"T{tid}")
+
+        # Hide any unused axes in the last page
+        for panel_idx in range(n_panels, panels_per_page):
+            row, col = divmod(panel_idx, ncols)
+            axes[row][col].set_visible(False)
+
+        fig.tight_layout()
+        out_path = output_dir / f"overview_{page_idx:03d}.png"
+        fig.savefig(out_path, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+
+        logger.debug("Saved overview page %d → %s", page_idx, out_path)
+        saved.append(out_path)
+
+    return saved

@@ -31,7 +31,7 @@ from .utils import (
 )
 from .spectral import sample_transect, compute_all
 from .transition import TransitionDetector
-from .visualization.plotting import plot_transect_analysis
+from .visualization.plotting_old import plot_transect_analysis
 from .optional import LandcoverClassifier
 
 logger = logging.getLogger(__name__)

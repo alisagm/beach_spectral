@@ -32,7 +32,6 @@ __version__ = '1.0.0'
 __author__ = 'Spectral Analysis Team'
 
 # Import main components for convenience
-from .main import analyze_all_transects, process_single_transect
 from .utils import (
     build_raster_index,
     load_transects,
@@ -40,15 +39,9 @@ from .utils import (
     find_overlapping_rasters  
 )
 from .spectral import sample_transect
-from .transition import TransitionDetector
-from .visualization import plot_transect_analysis
 from .config import THRESHOLDS, LANDCOVER_CLASSES, LANDCOVER_COLORS
 
 __all__ = [
-    # Main pipeline
-    'analyze_all_transects',
-    'process_single_transect',
-
     # Data I/O
     'build_raster_index',
     'load_transects',
@@ -57,11 +50,6 @@ __all__ = [
 
     # Processing
     'sample_transect',
-    'LandcoverClassifier',
-    'TransitionDetector',
-
-    # Visualization
-    'plot_transect_analysis',
 
     # Configuration
     'THRESHOLDS',

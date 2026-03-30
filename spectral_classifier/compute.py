@@ -81,7 +81,6 @@ def process_single_transect(
         transect_row,
         overlapping,
         year_config,
-        raster_index=raster_index,
     )
 
     # Compute all feature arrays. Returns a copy of spectral_data with
@@ -149,8 +148,7 @@ def run_compute(
 
     # Build spatial index over raster tiles.
     raster_index = build_raster_index(raster_paths)
-    logger.info(f"Indexed {len(raster_index)} rasters "
-                f"({len(raster_index.skipped)} skipped)")
+    logger.info(f"Indexed {len(raster_index)} rasters")
 
     # Load band configuration for this year.
     year_config = load_band_config(band_config_path, year)
