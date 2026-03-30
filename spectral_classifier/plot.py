@@ -168,8 +168,8 @@ def run_plots(
         return
 
     # ── Output sub-directories ────────────────────────────────────────────
-    transect_dir = output_dir / str(year) / "transects"
-    overview_dir = output_dir / str(year) / "overview"
+    transect_dir = output_dir / "transects"
+    overview_dir = output_dir / "overview"
     transect_dir.mkdir(parents=True, exist_ok=True)
     overview_dir.mkdir(parents=True, exist_ok=True)
 

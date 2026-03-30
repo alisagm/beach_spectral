@@ -62,7 +62,7 @@ def interpolate_points_along_line(
         distance += interval
 
     # Always include the end point
-    if points[-1][1] < total_length:
+    if points and (total_length - points[-1][1]) > 1e-3:   # only add if gap > 1mm
         end_point = line.interpolate(total_length)
         points.append((end_point, total_length))
 
