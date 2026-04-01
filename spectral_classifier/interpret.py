@@ -195,24 +195,17 @@ def _process_transect(
     profiles_grp: pd.DataFrame,
     detector: TransitionDetector,
 ) -> Tuple[List[Dict], List[Dict]]:
-    """
-    Run detection for one transect.
-
-    Args:
-        transect_id: Identifier for this transect.
-        features_grp: Feature rows for this transect (reset index).
-        profiles_grp: Profile rows for this transect (reset index).
-        detector:     Shared TransitionDetector instance.
-
-    Returns:
-        Tuple of (flat_rows, transition_dicts):
-            flat_rows:       Flattened dicts for Parquet output.
-            transition_dicts: Raw dicts for GeoJSON export.
-    """
     stub_lc = _make_stub_landcover(features_grp)
 
+    # nir.py's detect_dry_wet_boundaries accesses features['nir'] directly
+    # for the water-noise-floor filter and drop-magnitude calculations.
+    # Raw bands live in profiles, not features, so we join them in here.
+    # Merge on distance — both frames are already filtered to this transect.
+    raw_bands = profiles_grp[["distance", "nir", "red", "green", "blue"]]
+    features_with_bands = features_grp.merge(raw_bands, on="distance", how="left")
+
     try:
-        transitions = detector.find_transitions(features_grp, stub_lc)
+        transitions = detector.find_transitions(features_with_bands, stub_lc)
     except Exception:
         logger.exception("Transect %s: detection raised an exception", transect_id)
         transitions = []

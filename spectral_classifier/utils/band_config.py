@@ -125,23 +125,30 @@ def detect_band_mode_from_features(features: pd.DataFrame) -> str:
     """
     Derive band mode from a computed features DataFrame.
  
-    Used as a fallback inside TransitionDetector when band_mode is not
-    supplied by the caller.  The features DataFrame produced by compute.py
-    always contains 'nir' and 'blue' columns, but fills them with NaN for
-    years where those bands are absent — so column *presence* is not
-    sufficient; we must check for non-NaN values.
+    compute.py splits outputs into two Parquets: raw band values go to
+    profiles_{year}.parquet, while features_{year}.parquet contains only
+    derived columns.  The raw 'nir' and 'blue' columns are therefore
+    absent from the features DataFrame — band availability must be inferred
+    from the smoothed first-derivative columns instead:
  
-    Prefer passing band_mode explicitly from the interpret layer where the
-    year config is already known.
+        nir_d1_smooth  → present & non-null  iff  year has NIR band
+        blue_d1_smooth → present & non-null  iff  year has blue band
+ 
+    Used as a fallback inside TransitionDetector when band_mode is not
+    supplied by the caller.  Prefer passing band_mode explicitly from the
+    interpret layer where the year config is already known.
  
     Args:
-        features: DataFrame with spectral feature columns.
+        features: DataFrame with spectral feature columns produced by
+                  compute.py / features.py.
  
     Returns:
         One of BAND_MODE_4BAND, BAND_MODE_CIR, BAND_MODE_RGB.
     """
-    has_nir  = "nir"  in features.columns and not features["nir"].isna().all()
-    has_blue = "blue" in features.columns and not features["blue"].isna().all()
+    has_nir  = ("nir_d1_smooth"  in features.columns
+                and not features["nir_d1_smooth"].isna().all())
+    has_blue = ("blue_d1_smooth" in features.columns
+                and not features["blue_d1_smooth"].isna().all())
  
     if has_nir and has_blue:
         return BAND_MODE_4BAND
