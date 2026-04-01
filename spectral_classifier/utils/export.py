@@ -477,61 +477,98 @@ def _build_shell_line_geometry(
 def bundle_shell_lines_to_gpkg(
     output_root: Path,
     years: List[str],
-    output_filename: str = 'shelllines_all_years.gpkg'
+    output_filename: str = 'shelllines_all_years.gpkg',
+    driver: str = 'GPKG',
 ) -> Optional[Path]:
     """
-    Bundle multiple years' shell line GeoJSONs into a single GeoPackage.
-    
-    Reads individual shellline_{year}.geojson files and combines them
-    into a single GeoPackage with a 'year' attribute for each feature.
-    
+    Bundle multiple years' shell line GeoJSONs into a single file.
+ 
+    Reads individual shellline_{year}.geojson files and combines them into
+    one vector file where each feature is one year's shell line geometry.
+    Features are sorted chronologically and carry a 'year' attribute.
+ 
     Args:
-        output_root: Root output directory containing year subdirectories
-        years: List of year strings to include
-        output_filename: Name of output GeoPackage file
-        
+        output_root:     Root output directory containing year subdirectories.
+        years:           List of year strings to include, e.g. ['1995', '2004'].
+        output_filename: Name of the output file.  Extension should match
+                         driver (e.g. '.gpkg' for GPKG, '.geojson' for GeoJSON).
+        driver:          Fiona driver string.  'GPKG' (default) or 'GeoJSON'.
+ 
     Returns:
-        Path to saved GeoPackage, or None if no valid GeoJSONs found
+        Path to the saved file, or None if no valid per-year GeoJSONs were found.
     """
     try:
         import geopandas as gpd
     except ImportError as e:
-        logger.error(f"Missing geopandas for GPKG export: {e}")
+        logger.error(f"Missing geopandas for bundle export: {e}")
         return None
-    
-    logger.info(f"Bundling shell lines for years: {years}")
-    
+ 
+    logger.info(f"Bundling shell lines for {len(years)} year(s): {sorted(years)}")
+ 
     output_root = Path(output_root)
     gdfs = []
-    
-    for year in years:
+ 
+    for year in sorted(years):          # chronological order
         geojson_path = output_root / year / f'shellline_{year}.geojson'
-        
+ 
         if not geojson_path.exists():
-            logger.warning(f"Shell line GeoJSON not found for year {year}: {geojson_path}")
+            logger.warning(f"Shell line not found for year {year}: {geojson_path}")
             continue
-        
+ 
         try:
             gdf = gpd.read_file(geojson_path)
+            # Stamp year on every feature (export_shell_line_geojson already
+            # writes a 'year' column, but re-stamping is harmless and ensures
+            # the value is correct even if the file was edited externally).
             gdf['year'] = year
             gdfs.append(gdf)
-            logger.debug(f"Loaded {geojson_path}")
+            logger.debug(f"  Loaded {geojson_path} ({len(gdf)} feature(s))")
         except Exception as e:
-            logger.error(f"Failed to load {geojson_path}: {e}")
+            logger.error(f"Failed to load shell line for year {year}: {e}")
             continue
-    
+ 
     if not gdfs:
-        logger.warning("No valid shell line GeoJSONs found - skipping GPKG bundle")
+        logger.warning("No valid shell line GeoJSONs found — skipping bundle")
         return None
-    
-    # Combine all years
-    combined = pd.concat(gdfs, ignore_index=True)
-    combined = gpd.GeoDataFrame(combined, crs=gdfs[0].crs)
-    
-    # Save to GeoPackage
+ 
+    combined = gpd.GeoDataFrame(
+        pd.concat(gdfs, ignore_index=True),
+        crs=gdfs[0].crs,
+    )
+ 
     output_path = output_root / output_filename
-    combined.to_file(output_path, driver='GPKG')
-    
-    logger.info(f"Bundled {len(gdfs)} years into {output_path}")
-    
+    combined.to_file(output_path, driver=driver)
+ 
+    logger.info(
+        f"Bundled {len(gdfs)}/{len(years)} year(s) → {output_path} "
+        f"({len(combined)} feature(s), driver={driver})"
+    )
+ 
     return output_path
+
+def bundle_shell_lines_to_geojson(
+    output_root: Path,
+    years: List[str],
+    output_filename: str = 'shelllines_all_years.geojson',
+) -> Optional[Path]:
+    """
+    Bundle multiple years' shell lines into a single GeoJSON file.
+ 
+    Convenience wrapper around bundle_shell_lines_to_gpkg with driver='GeoJSON'.
+    Each feature represents one year's shell line geometry and carries a
+    'year' attribute.
+ 
+    Args:
+        output_root:     Root output directory containing year subdirectories.
+        years:           List of year strings to include.
+        output_filename: Output filename (default: 'shelllines_all_years.geojson').
+ 
+    Returns:
+        Path to the saved GeoJSON, or None if no shell lines were found.
+    """
+    return bundle_shell_lines_to_gpkg(
+        output_root=output_root,
+        years=years,
+        output_filename=output_filename,
+        driver='GeoJSON',
+    )

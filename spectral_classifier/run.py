@@ -54,6 +54,7 @@ from spectral_classifier.utils import (
     setup_logging,
     group_rasters_by_year,
     validate_output_directory,
+    bundle_shell_lines_to_geojson,
 )
 from spectral_classifier.config import BAND_CONFIG_PATH, PLOT_GRID_COLS, PLOT_GRID_ROWS
 
@@ -524,6 +525,20 @@ def main():
                 ncols=args.plot_cols,
                 nrows=args.plot_rows,
             )
+            
+    # ── Multi-year shell line bundle ─────────────────────────────────────────
+    # Only bundle when the interpret step ran (shell lines were produced)
+    # and at least one year succeeded.
+    succeeded_interpret = [y for y, ok in interpret_results.items() if ok]
+    if len(succeeded_interpret) >= 1:
+        bundle_path = bundle_shell_lines_to_geojson(
+            output_root=args.output,
+            years=succeeded_interpret,
+        )
+        if bundle_path:
+            print(f"\nShell line bundle: {bundle_path}")
+        else:
+            print("\nWarning — shell line bundle skipped (no valid per-year GeoJSONs)")
 
     # Summary
     elapsed = datetime.now() - start_time

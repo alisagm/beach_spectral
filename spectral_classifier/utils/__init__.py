@@ -33,7 +33,8 @@ from .export import (
     calculate_processing_stats,
     print_processing_summary,
     export_shell_line_geojson,
-    bundle_shell_lines_to_gpkg
+    bundle_shell_lines_to_gpkg,
+    bundle_shell_lines_to_geojson
 )
 
 # Logging configuration
@@ -80,6 +81,7 @@ __all__ = [
     'print_processing_summary',
     'export_shell_line_geojson',
     'bundle_shell_lines_to_gpkg',
+    'bundle_shell_lines_to_geojson',
     # Logging
     'setup_logging',
     'get_logger',
