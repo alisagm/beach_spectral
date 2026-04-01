@@ -5,6 +5,17 @@ Utility functions for loading and reading spectral band configurations.
 import json
 from pathlib import Path
 from typing import Dict, Optional
+import pandas as pd
+
+# ---------------------------------------------------------------------------
+# Canonical band-mode string constants
+# These replace the deprecated BAND_CONFIG_* constants from utils/data_io.py.
+# All transition modules and callers should import from here.
+# ---------------------------------------------------------------------------
+ 
+BAND_MODE_4BAND = "4band"  # 4-band RGBN imagery (NIR + blue both available)
+BAND_MODE_CIR   = "cir"   # 3-band CIR imagery  (NIR available, blue absent)
+BAND_MODE_RGB   = "rgb"   # 3-band RGB imagery  (no NIR)
 
 # ---------------------------------------------------------------------------
 # Band configuration helpers
@@ -109,3 +120,32 @@ def band_mode_from_indices(band_indices: dict) -> str:
         return "cir"
     else:
         return "rgb"
+    
+def detect_band_mode_from_features(features: pd.DataFrame) -> str:
+    """
+    Derive band mode from a computed features DataFrame.
+ 
+    Used as a fallback inside TransitionDetector when band_mode is not
+    supplied by the caller.  The features DataFrame produced by compute.py
+    always contains 'nir' and 'blue' columns, but fills them with NaN for
+    years where those bands are absent — so column *presence* is not
+    sufficient; we must check for non-NaN values.
+ 
+    Prefer passing band_mode explicitly from the interpret layer where the
+    year config is already known.
+ 
+    Args:
+        features: DataFrame with spectral feature columns.
+ 
+    Returns:
+        One of BAND_MODE_4BAND, BAND_MODE_CIR, BAND_MODE_RGB.
+    """
+    has_nir  = "nir"  in features.columns and not features["nir"].isna().all()
+    has_blue = "blue" in features.columns and not features["blue"].isna().all()
+ 
+    if has_nir and has_blue:
+        return BAND_MODE_4BAND
+    elif has_nir:
+        return BAND_MODE_CIR
+    else:
+        return BAND_MODE_RGB

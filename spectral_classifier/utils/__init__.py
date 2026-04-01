@@ -8,7 +8,11 @@ Re-exports commonly used utilities from submodules for convenient importing.
 from .band_config import (
     load_band_config,
     resolve_band_indices,
-    band_mode_from_indices
+    band_mode_from_indices,
+    detect_band_mode_from_features,
+    BAND_MODE_4BAND,
+    BAND_MODE_CIR,
+    BAND_MODE_RGB,
 )
 
 # Data I/O
@@ -57,6 +61,10 @@ __all__ = [
     'load_band_config',
     'resolve_band_indices',
     'band_mode_from_indices',
+    'detect_band_mode_from_features',
+    'BAND_MODE_4BAND',
+    'BAND_MODE_CIR',
+    'BAND_MODE_RGB',
     # Data I/O
     'build_raster_index',
     'load_transects',

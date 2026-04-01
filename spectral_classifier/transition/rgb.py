@@ -27,7 +27,7 @@ import pandas as pd
 import numpy as np
 
 from ..config import THRESHOLDS
-from ..utils.data_io import BAND_CONFIG_RGB
+from ..utils.band_config import BAND_MODE_RGB as BAND_CONFIG_RGB
 from .nir import validate_rg_pattern_for_boundary_type
 
 logger = logging.getLogger(__name__)

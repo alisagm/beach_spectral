@@ -30,7 +30,11 @@ from ..transition.nir import (
     detect_vegetation_boundaries as _detect_veg_nir,
     detect_surf_zone_boundaries as _detect_surf_nir,
 )
-from ..utils.data_io import BAND_CONFIG_4BAND, BAND_CONFIG_CIR, BAND_CONFIG_RGB
+from ..utils.band_config import (
+    BAND_MODE_4BAND as BAND_CONFIG_4BAND,
+    BAND_MODE_CIR   as BAND_CONFIG_CIR,
+    BAND_MODE_RGB   as BAND_CONFIG_RGB,
+)
 from ..config import THRESHOLDS
 
 
@@ -63,8 +67,8 @@ def detect_all_boundaries(
         
     if band_mode is None:
         # Auto-detect from features
-        from ..utils.data_io import detect_band_mode_from_dataframe
-        band_mode = detect_band_mode_from_dataframe(features)
+        from ..utils.band_config import detect_band_mode_from_features
+        band_mode = detect_band_mode_from_features(features)
     
     has_nir = band_mode in [BAND_CONFIG_4BAND, BAND_CONFIG_CIR]
     

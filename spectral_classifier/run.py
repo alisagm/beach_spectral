@@ -49,6 +49,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from .compute import run_compute
+from .interpret import run_interpret
 from spectral_classifier.utils import (
     setup_logging,
     group_rasters_by_year,
@@ -70,12 +71,13 @@ def parse_args():
     # ── Common args ────────────────────────────────────────────────────────
     parser.add_argument(
         "--mode", "-m",
-        choices=["all", "compute", "plot"],
+        choices=["all", "compute", "interpret", "plot"],
         default="all",
         help=(
             "Pipeline step(s) to run: "
-            "'all' = compute then plot (default), "
-            "'compute' = sampling and feature extraction only, "
+            "'all' = compute → interpret → plot (default), "
+            "'compute' = profile sampling and feature extraction only, "
+            "'interpret' = transition detection from existing feature Parquets, "
             "'plot' = render plots from existing Parquet checkpoints"
         ),
     )
@@ -237,6 +239,58 @@ def _compute_year(
         logging.exception("Compute failed for year %s", year)
         return False
 
+def _interpret_year(
+    year: str,
+    output_root: Path,
+    verbose: bool,
+    force: bool,
+) -> bool:
+    """
+    Run the interpret (transition detection) step for one year.
+ 
+    Expects both Parquet checkpoints written by _compute_year to already
+    exist.  Skips if transitions_{year}.parquet already exists and *force*
+    is False.
+ 
+    Returns:
+        True if the step succeeded or was skipped; False on error.
+    """
+    year_output_dir  = output_root / year
+    features_path    = year_output_dir / f"features_{year}.parquet"
+    profiles_path    = year_output_dir / f"profiles_{year}.parquet"
+    transitions_path = year_output_dir / f"transitions_{year}.parquet"
+ 
+    if not force and transitions_path.exists():
+        print("  [interpret] Skipping — checkpoint exists (use --force to overwrite)")
+        return True
+ 
+    # Guard: refuse to run if compute outputs are missing.
+    missing = [p for p in (features_path, profiles_path) if not p.exists()]
+    if missing:
+        for p in missing:
+            print(f"  [interpret] ERROR — missing input: {p}")
+        print("  [interpret] Run compute step first.")
+        return False
+ 
+    try:
+        transitions_path, shellline_path = run_interpret(
+            year=year,
+            features_path=features_path,
+            profiles_path=profiles_path,
+            output_dir=year_output_dir,
+            verbose=verbose,
+        )
+        print(f"  [interpret] Transitions: {transitions_path}")
+        if shellline_path:
+            print(f"  [interpret] Shell line: {shellline_path}")
+        else:
+            print("  [interpret] Warning — no shell lines detected (empty GeoJSON)")
+        return True
+ 
+    except Exception as e:
+        print(f"  [interpret] ERROR: {e}")
+        logging.exception("Interpret failed for year %s", year)
+        return False
 
 def _plot_year(
     year: str,
@@ -421,6 +475,7 @@ def main():
     # Process each year
     start_time = datetime.now()
     compute_results: dict[str, bool] = {}
+    interpret_results: dict[str, bool] = {}
     plot_results:    dict[str, bool] = {}
 
     for year in years_to_process:
@@ -437,12 +492,27 @@ def main():
                 verbose=args.verbose,
                 force=args.force,
             )
-            # Don't attempt plotting if compute failed
             if args.mode == "all" and not compute_results[year]:
-                print(f"  [plot] Skipping — compute step failed for {year}")
+                print(f"  [interpret] Skipping — compute step failed for {year}")
+                print(f"  [plot]      Skipping — compute step failed for {year}")
+                interpret_results[year] = False
                 plot_results[year] = False
                 continue
-
+ 
+        if args.mode in ("interpret", "all"):
+            if args.mode == "interpret":
+                _print_year_banner(year, len(raster_paths), args.output / year)
+            interpret_results[year] = _interpret_year(
+                year=year,
+                output_root=args.output,
+                verbose=args.verbose,
+                force=args.force,
+            )
+            if args.mode == "all" and not interpret_results[year]:
+                print(f"  [plot] Skipping — interpret step failed for {year}")
+                plot_results[year] = False
+                continue
+ 
         if args.mode in ("plot", "all"):
             if args.mode == "plot":
                 _print_year_banner(year, len(raster_paths), args.output / year)
@@ -472,6 +542,14 @@ def main():
             print(f"  Failed years: {failed}")
             any_failure = True
 
+    if interpret_results:
+        n_ok = sum(v for v in interpret_results.values())
+        print(f"Interpret:  {n_ok}/{len(interpret_results)} succeeded")
+        failed = [y for y, v in interpret_results.items() if not v]
+        if failed:
+            print(f"  Failed years: {failed}")
+            any_failure = True
+            
     if plot_results:
         n_ok = sum(v for v in plot_results.values())
         print(f"Plot:     {n_ok}/{len(plot_results)} succeeded")

@@ -26,7 +26,11 @@ import pandas as pd
 import numpy as np
 
 from ..config import THRESHOLDS
-from ..utils.data_io import BAND_CONFIG_4BAND, BAND_CONFIG_CIR, BAND_CONFIG_RGB
+from ..utils.band_config import (
+    BAND_MODE_4BAND as BAND_CONFIG_4BAND,
+    BAND_MODE_CIR   as BAND_CONFIG_CIR,
+    BAND_MODE_RGB   as BAND_CONFIG_RGB,
+)
 
 logger = logging.getLogger(__name__)
 

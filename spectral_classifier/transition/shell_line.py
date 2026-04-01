@@ -19,9 +19,11 @@ import pandas as pd
 import numpy as np
 
 from ..config import THRESHOLDS, EDGE_BUFFER_M, DEFAULT_BOUNDARY_TYPES
-from ..utils.data_io import (
-    BAND_CONFIG_4BAND, BAND_CONFIG_CIR, BAND_CONFIG_RGB,
-    detect_band_mode_from_dataframe
+from ..utils.band_config import (
+    BAND_MODE_4BAND as BAND_CONFIG_4BAND,
+    BAND_MODE_CIR   as BAND_CONFIG_CIR,
+    BAND_MODE_RGB   as BAND_CONFIG_RGB,
+    detect_band_mode_from_features,
 )
 
 # Import detection methods from submodules
@@ -183,7 +185,7 @@ class TransitionDetector:
 
     def _detect_band_mode(self, features: pd.DataFrame) -> str:
         """Detect band mode from features DataFrame."""
-        return detect_band_mode_from_dataframe(features)
+        return detect_band_mode_from_features(features)
 
     # ========================================================================
     # SHELL LINE SELECTION
