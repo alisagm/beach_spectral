@@ -40,8 +40,10 @@ class ColumnMeta:
     """Metadata for a single plottable column."""
     source: Literal["profiles", "features", "transitions"]
     group:  str                                # key in COLUMN_GROUPS
-    scale:  Literal["dn", "norm", "deriv", "binary"]
+    scale:  Literal["dn", "norm", "deriv", "binary", "annotation"]
     style:  dict = field(default_factory=dict) # matplotlib kwargs for ax.plot()
+    # "annotation" scale: rendered as axvline, not ax.plot.
+    # Excluded from _assign_axes — does not go on primary or secondary axis.
 
 
 @dataclass
@@ -51,9 +53,11 @@ class PlotSpec:
 
     Attributes
     ----------
-    profile_cols    Columns to pull from profiles_df.
-    feature_cols    Columns to pull from features_df.
-    transition_cols Columns to pull from transitions_df (stub, always []).
+    profile_cols    Columns to pull from profiles_df (continuous series).
+    feature_cols    Columns to pull from features_df (continuous series).
+    transition_cols Annotation columns from transitions_df, rendered as
+                    axvline markers rather than line plots.
+                    Currently: ["shell_line"] when shell lines are requested.
     primary_cols    Columns assigned to the primary (left) y-axis.
     secondary_cols  Columns assigned to the secondary (right) y-axis.
 
@@ -64,7 +68,7 @@ class PlotSpec:
     """
     profile_cols:    list[str]
     feature_cols:    list[str]
-    transition_cols: list[str]
+    transition_cols: list[str]   # annotation-scale; rendered as axvlines
     primary_cols:    list[str]
     secondary_cols:  list[str]
 
@@ -232,20 +236,35 @@ COLUMN_REGISTRY: dict[str, ColumnMeta] = {
     "has_oscillations":  ColumnMeta("features", "detection", "binary", dict()),
     "has_rgb_foam_peak": ColumnMeta("features", "detection", "binary", dict()),
 
-    # ── Transitions (stub — extend when interpret.py is integrated) ────────
-    # Transition columns hold a single distance value per transect (scalar),
-    # requiring axvline / axvspan rendering rather than per-distance line plots.
-    # TODO: add column entries here once interpret.py schema is finalised.
+    # ── Transitions (interpret.py outputs) ────────────────────────────────
+    # Transition columns hold scalar values (one row per transect, not per
+    # distance sample). Rendered as axvline markers via _plot_transition_annotations;
+    # excluded from _assign_axes (scale = "annotation").
+    #
+    # "shell_line" is a pseudo-column: it maps to the `distance` column of
+    # transitions_{year}.parquet filtered to one transect. Line style encodes
+    # detection reliability:
+    #   nir_derivative         → solid   (strict NIR threshold, most reliable)
+    #   nir_relaxed_derivative → dashed  (relaxed threshold)
+    #   nir_derivative_any     → dotted  (any-direction fallback)
+    # Alpha is confidence-scaled so uncertain detections appear lighter.
+    #
+    # TODO: add more annotation types as interpret.py produces them
+    # (e.g. vegetation boundaries, surf zone edges).
+    "shell_line": ColumnMeta(
+        "transitions", "transitions", "annotation",
+        dict(color="#B22222", linewidth=1.5, zorder=5, label="Shell line"),
+    ),
 }
 
 
 # ── Column groups ──────────────────────────────────────────────────────────────
 
 def _build_all_group() -> list[str]:
-    """All non-stub, non-binary columns in registry order."""
+    """All non-binary columns in registry order, including shell_line."""
     return [
         col for col, meta in COLUMN_REGISTRY.items()
-        if meta.group != "transitions" and meta.scale != "binary"
+        if meta.scale != "binary"
     ]
 
 
@@ -280,8 +299,7 @@ COLUMN_GROUPS: dict[str, list[str]] = {
 
     "detection": ["spectral_angle", "has_oscillations", "has_rgb_foam_peak"],
 
-    # Stub — populated once interpret.py integration is complete.
-    "transitions": [],
+    "transitions": ["shell_line"],
 
     # Convenience alias: all non-stub, non-binary columns.
     "all": _build_all_group(),
@@ -468,15 +486,23 @@ def resolve_plot_columns(
             feature_cols.append(col)
 
         elif meta.source == "transitions":
-            # Stub: transitions_df not yet produced by interpret.py.
-            logger.warning(
-                "Column %r is a transitions column — not yet supported "
-                "(pending interpret.py integration). Skipping.",
-                col,
-            )
-            continue
+            if transitions_df is None:
+                logger.warning(
+                    "Column %r requires the transitions parquet which was not "
+                    "provided. Run interpret.py first, then pass --transitions-path.",
+                    col,
+                )
+                continue
+            if len(transitions_df) == 0:
+                logger.warning(
+                    "Transitions parquet is empty — no shell lines to annotate."
+                )
+                continue
+            transition_cols.append(col)
 
         # ── Scale family partition ─────────────────────────────────────
+        # "annotation" columns (shell_line) are already captured in
+        # transition_cols above; they never reach this block.
         if meta.scale == "dn":
             dn.append(col)
         elif meta.scale == "norm":
@@ -485,6 +511,8 @@ def resolve_plot_columns(
             deriv.append(col)
         elif meta.scale == "binary":
             binary.append(col)
+        elif meta.scale == "annotation":
+            pass  # already in transition_cols
 
     if binary:
         logger.warning(
@@ -545,7 +573,11 @@ def list_available_columns(
             elif meta.source == "features" and _col_in_df(col, features_df):
                 available.append(col)
             elif meta.source == "transitions":
-                pass  # stub: never available yet
+                # Annotation columns are available when transitions_df is
+                # non-None and non-empty. No column-level NaN check needed
+                # since shell_line maps to `distance`, which is always present.
+                if transitions_df is not None and len(transitions_df) > 0:
+                    available.append(col)
 
         result[group] = available
 

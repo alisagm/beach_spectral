@@ -60,6 +60,19 @@ _BAND_STYLE = {
 _NIR_DERIV_COLOR  = "darkorange"
 _NIR_DERIV_THRESH = -3.0   # same threshold used in TransitionDetector
 
+# ── Transition annotation config ───────────────────────────────────────────────
+# Base style shared across all shell-line axvlines.
+# Alpha and linestyle are overridden per-row based on confidence and
+# detection_method respectively — see _plot_transition_annotations.
+_SHELL_LINE_BASE = dict(color="#B22222", linewidth=1.5, zorder=5)
+
+# Maps detection_method → linestyle so reliability is encoded visually.
+_DETECTION_LINESTYLE: dict[str, str] = {
+    "nir_derivative":          "-",   # solid   — strict threshold, most reliable
+    "nir_relaxed_derivative":  "--",  # dashed  — relaxed threshold
+    "nir_derivative_any":      ":",   # dotted  — any-direction fallback
+}
+
 
 # ── Private helpers ────────────────────────────────────────────────────────────
 
@@ -166,6 +179,69 @@ def _plot_columns_on_axis(
         ax.plot(distance, series, **style)
 
 
+def _plot_transition_annotations(
+    ax:              plt.Axes,
+    transitions_grp: pd.DataFrame,
+    annotation_cols: list[str],
+) -> None:
+    """
+    Draw axvline markers for transition-type columns onto the primary axis.
+
+    Currently supports one annotation type:
+
+    ``shell_line``
+        The detected dry/wet boundary position. When multiple rows exist for
+        the same transect (shouldn't happen with current detect logic, but
+        handled defensively), the highest-confidence row is used.
+
+        Visual encoding:
+        - Line style  → detection reliability (solid / dashed / dotted).
+        - Alpha       → confidence, scaled to [0.35, 0.90] so low-confidence
+                        lines remain visible but clearly uncertain.
+        - guaranteed_shell_line == True → full alpha override (0.90).
+
+    The axvline is drawn on the primary axis. Because twinx shares the x-axis,
+    the line appears on both axes without drawing it twice.
+
+    Args:
+        ax:              Primary Axes to annotate.
+        transitions_grp: Transitions rows for a single transect (may be empty).
+        annotation_cols: Annotation column names from PlotSpec.transition_cols.
+
+    Note:
+        TODO: When binary columns (has_oscillations, has_rgb_foam_peak) gain
+        axvspan support, this function is the natural home for that logic too.
+    """
+    if transitions_grp.empty:
+        return
+
+    for col in annotation_cols:
+        if col != "shell_line":
+            logger.warning("Unknown annotation column %r — skipping.", col)
+            continue
+
+        # If multiple rows exist, prefer the highest-confidence detection.
+        row = transitions_grp.sort_values("confidence", ascending=False).iloc[0]
+        dist   = float(row["distance"])
+        conf   = float(row.get("confidence") or 0.5)
+        method = str(row.get("detection_method") or "")
+        guaranteed = bool(row.get("guaranteed_shell_line", False))
+
+        linestyle = _DETECTION_LINESTYLE.get(method, "--")
+
+        # Alpha: scale confidence to [0.35, 0.90]; guaranteed detections
+        # always get full alpha regardless of numeric confidence score.
+        alpha = 0.90 if guaranteed else (0.35 + min(conf, 1.0) * 0.55)
+
+        ax.axvline(
+            x=dist,
+            linestyle=linestyle,
+            alpha=alpha,
+            label=f"Shell line ({conf:.2f})",
+            **_SHELL_LINE_BASE,
+        )
+
+
 def _plot_nir_derivative(ax: plt.Axes,
                          features_df: pd.DataFrame) -> plt.Axes:
     """
@@ -214,9 +290,10 @@ def _plot_nir_derivative(ax: plt.Axes,
 
 
 def _render_spectral_axes(
-    ax:          plt.Axes,
-    profile_df:  pd.DataFrame,
-    features_df: Optional[pd.DataFrame] = None,
+    ax:              plt.Axes,
+    profile_df:      pd.DataFrame,
+    features_df:     Optional[pd.DataFrame] = None,
+    transitions_df:  Optional[pd.DataFrame] = None,
     *,
     title:     Optional[str] = None,
     plot_spec: Optional["PlotSpec"] = None,
@@ -228,32 +305,33 @@ def _render_spectral_axes(
     ------------------------------
     Plots whichever of red/green/blue/nir are non-null in *profile_df*.
     If *features_df* contains ``nir_d1_smooth``, a secondary derivative
-    overlay is added via _plot_nir_derivative.
+    overlay is added via _plot_nir_derivative.  If *transitions_df* is
+    provided and non-empty, the shell line position is drawn as an axvline.
 
     Spec path (plot_spec supplied)
     -------------------------------
     Plots exactly the columns listed in plot_spec.primary_cols and
-    plot_spec.secondary_cols, sourced from profile_df / features_df as
-    indicated by each column's COLUMN_REGISTRY entry.  Y-axis labels are
-    set dynamically from the scale families present.
+    plot_spec.secondary_cols, sourced from profile_df / features_df.
+    If plot_spec.transition_cols is non-empty and transitions_df is provided,
+    shell line annotations are drawn via _plot_transition_annotations.
+    Y-axis labels are set dynamically from the scale families present.
 
     Args:
-        ax:          Matplotlib axes to draw on.
-        profile_df:  Rows for a single transect; must contain ``distance``.
-        features_df: Optional features rows for the same transect.
-        title:       Axes title string.
-        plot_spec:   Pre-resolved PlotSpec from resolve_plot_columns(), or
-                     None to use the default band + NIR-derivative rendering.
+        ax:             Matplotlib axes to draw on.
+        profile_df:     Rows for a single transect; must contain ``distance``.
+        features_df:    Optional features rows for the same transect.
+        transitions_df: Optional transitions rows for the same transect
+                        (one row in the normal case; see _plot_transition_annotations).
+        title:          Axes title string.
+        plot_spec:      Pre-resolved PlotSpec, or None for default rendering.
 
     Returns:
         Secondary axes (twinx) if one was created, else None.
 
     Note:
         Binary columns (has_oscillations, has_rgb_foam_peak) are excluded
-        from PlotSpec.primary_cols / secondary_cols and therefore never
-        reach this function.
-        TODO: render binary columns as axvspan shaded regions once the
-        rendering layer supports mixed continuous + discrete series.
+        from PlotSpec primary/secondary cols and never reach this function.
+        TODO: render binary columns as axvspan shaded regions.
     """
 
     # ── Shared setup ───────────────────────────────────────────────────────
@@ -292,6 +370,11 @@ def _render_spectral_axes(
             and "nir_d1_smooth" in features_df.columns
         ):
             ax2 = _plot_nir_derivative(ax, features_df)
+
+        # Default: show shell line if transitions were loaded, without
+        # requiring an explicit --features shell_line argument.
+        if transitions_df is not None and not transitions_df.empty:
+            _plot_transition_annotations(ax, transitions_df, ["shell_line"])
 
         legend_loc = "upper left" if ax2 is not None else "upper right"
         ax.legend(loc=legend_loc, fontsize=8, framealpha=0.85)
@@ -356,34 +439,48 @@ def _render_spectral_axes(
         ax2.tick_params(axis="y", labelsize=8)
         ax2.legend(loc="upper right", fontsize=8, framealpha=0.85)
 
+    # ── Transition annotations ──────────────────────────────────────────────
+    # Drawn on the primary axis after all line plots so the axvline sits on
+    # top. Both axes share the x-axis, so twinx users see the line too.
+    if plot_spec.transition_cols and transitions_df is not None:
+        _plot_transition_annotations(
+            ax,
+            transitions_df if not transitions_df.empty else pd.DataFrame(),
+            plot_spec.transition_cols,
+        )
+        # Re-draw the primary legend to include the new shell_line entry.
+        ax.legend(loc="upper left", fontsize=8, framealpha=0.85)
+
     return ax2
 
 
 # ── Public functions ───────────────────────────────────────────────────────────
 
 def plot_spectral_single(
-    transect_id:   int,
-    profiles_path: Path,
-    output_dir:    Path,
-    features_path: Optional[Path] = None,
-    figsize:       tuple = (12, 5),
-    plot_spec:     Optional["PlotSpec"] = None,
+    transect_id:      int,
+    profiles_path:    Path,
+    output_dir:       Path,
+    features_path:    Optional[Path] = None,
+    transitions_path: Optional[Path] = None,
+    figsize:          tuple = (12, 5),
+    plot_spec:        Optional["PlotSpec"] = None,
 ) -> Optional[Path]:
     """
     Render and save a spectral profile PNG for one transect.
 
-    Loads *profiles_path* (and optionally *features_path*) each call.
-    Intended for interactive / ad-hoc use.  For batch rendering, supply
-    pre-loaded DataFrames to :func:`_render_spectral_axes` directly, or
+    Loads *profiles_path* (and optionally *features_path* / *transitions_path*)
+    each call. Intended for interactive / ad-hoc use.  For batch rendering,
+    supply pre-loaded DataFrames to :func:`_render_spectral_axes` directly, or
     use :func:`plot_spectral_grid`.
 
     Args:
-        transect_id:   Integer transect identifier.
-        profiles_path: Path to ``profiles_{year}.parquet``.
-        output_dir:    Directory to write the PNG into.
-        features_path: Optional path to ``features_{year}.parquet``.
-        figsize:       Matplotlib figure size.
-        plot_spec:     Pre-resolved PlotSpec, or None for default rendering.
+        transect_id:      Integer transect identifier.
+        profiles_path:    Path to ``profiles_{year}.parquet``.
+        output_dir:       Directory to write the PNG into.
+        features_path:    Optional path to ``features_{year}.parquet``.
+        transitions_path: Optional path to ``transitions_{year}.parquet``.
+        figsize:          Matplotlib figure size.
+        plot_spec:        Pre-resolved PlotSpec, or None for default rendering.
 
     Returns:
         Path to the saved PNG, or None if the transect has no data.
@@ -402,11 +499,18 @@ def plot_spectral_single(
         if features.empty:
             features = None
 
+    transitions = None
+    if transitions_path is not None and Path(transitions_path).exists():
+        trans_df    = pd.read_parquet(transitions_path)
+        transitions = trans_df[trans_df["transect_id"] == transect_id]
+        if transitions.empty:
+            transitions = None
+
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     fig, ax = plt.subplots(figsize=figsize)
-    _render_spectral_axes(ax, profile, features,
+    _render_spectral_axes(ax, profile, features, transitions,
                           title=f"Transect {transect_id}",
                           plot_spec=plot_spec)
 
@@ -419,13 +523,14 @@ def plot_spectral_single(
 
 
 def plot_spectral_grid(
-    transect_ids: List[int],
-    profiles_df:  pd.DataFrame,
-    output_dir:   Path,
-    features_df:  Optional[pd.DataFrame] = None,
-    ncols:        int = PLOT_GRID_COLS,
-    nrows:        int = PLOT_GRID_ROWS,
-    plot_spec:    Optional["PlotSpec"] = None,
+    transect_ids:   List[int],
+    profiles_df:    pd.DataFrame,
+    output_dir:     Path,
+    features_df:    Optional[pd.DataFrame] = None,
+    transitions_df: Optional[pd.DataFrame] = None,
+    ncols:          int = PLOT_GRID_COLS,
+    nrows:          int = PLOT_GRID_ROWS,
+    plot_spec:      Optional["PlotSpec"] = None,
 ) -> List[Path]:
     """
     Render multi-panel overview figures for a list of transects.
@@ -435,13 +540,16 @@ def plot_spectral_grid(
     desired sample before calling this function.
 
     Args:
-        transect_ids: Ordered list of transect IDs to plot.
-        profiles_df:  Full (or pre-filtered) profiles DataFrame.
-        output_dir:   Directory to write ``overview_NNN.png`` files into.
-        features_df:  Optional features DataFrame.
-        ncols:        Grid columns per page (default from config).
-        nrows:        Grid rows per page    (default from config).
-        plot_spec:    Pre-resolved PlotSpec, or None for default rendering.
+        transect_ids:   Ordered list of transect IDs to plot.
+        profiles_df:    Full (or pre-filtered) profiles DataFrame.
+        output_dir:     Directory to write ``overview_NNN.png`` files into.
+        features_df:    Optional features DataFrame.
+        transitions_df: Optional transitions DataFrame (one row per transect).
+                        When provided, shell line positions are annotated on
+                        each panel.
+        ncols:          Grid columns per page (default from config).
+        nrows:          Grid rows per page    (default from config).
+        plot_spec:      Pre-resolved PlotSpec, or None for default rendering.
 
     Returns:
         List of paths to saved overview PNGs (one per page).
@@ -474,12 +582,18 @@ def plot_spectral_grid(
             ax = axes[row][col]
 
             profile = profiles_df[profiles_df["transect_id"] == tid]
+
             features = None
             if features_df is not None:
                 feat_slice = features_df[features_df["transect_id"] == tid]
                 features   = feat_slice if not feat_slice.empty else None
 
-            _render_spectral_axes(ax, profile, features,
+            transitions = None
+            if transitions_df is not None:
+                trans_slice = transitions_df[transitions_df["transect_id"] == tid]
+                transitions = trans_slice if not trans_slice.empty else None
+
+            _render_spectral_axes(ax, profile, features, transitions,
                                   title=f"T{tid}",
                                   plot_spec=plot_spec)
 

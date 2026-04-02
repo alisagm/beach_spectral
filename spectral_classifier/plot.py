@@ -95,8 +95,9 @@ def run_plots(
                           automatically.
         features_path:    Optional path to ``features_{year}.parquet``.
                           Required for any non-band feature columns.
-        transitions_path: Reserved for future use (interpret.py outputs).
-                          Accepted but currently ignored.
+        transitions_path: Optional path to ``transitions_{year}.parquet``
+                          produced by interpret.py. When provided, shell line
+                          positions are annotated on every plot panel.
         transect_ids:     Explicit list of transect IDs to plot.
                           Priority 1 — overrides all other selection args.
         random_n:         Plot this many randomly sampled transects.
@@ -106,7 +107,8 @@ def run_plots(
                           Priority 3.
         features:         Column names or group shorthands to plot
                           (e.g. ["bands", "ndwi", "nir_d1_smooth"]).
-                          None → default rendering (bands + NIR derivative).
+                          None → default rendering (bands + NIR derivative
+                          overlay + shell line if transitions_path provided).
         ncols:            Overview grid columns (default from config).
         nrows:            Overview grid rows    (default from config).
     """
@@ -135,12 +137,23 @@ def run_plots(
                 features_path,
             )
 
+    transitions_df: Optional[pd.DataFrame] = None
     if transitions_path is not None:
-        logger.info(
-            "transitions_path=%s received but transition overlays are not yet "
-            "implemented (pending interpret.py integration).",
-            transitions_path,
-        )
+        transitions_path = Path(transitions_path)
+        if transitions_path.exists():
+            logger.info("Loading transitions from %s", transitions_path)
+            transitions_df = pd.read_parquet(transitions_path)
+            logger.info(
+                "Loaded %d transition row(s) covering %d transect(s).",
+                len(transitions_df),
+                transitions_df["transect_id"].nunique(),
+            )
+        else:
+            logger.warning(
+                "transitions_path supplied but file not found: %s — "
+                "shell line annotations will be skipped.",
+                transitions_path,
+            )
 
     # ── Resolve feature columns → PlotSpec ────────────────────────────────
     plot_spec: Optional[PlotSpec] = None
@@ -149,6 +162,7 @@ def run_plots(
             requested=features,
             profiles_df=profiles_df,
             features_df=features_df,
+            transitions_df=transitions_df,
         )
         logger.info(
             "PlotSpec resolved — primary: %s | secondary: %s",
@@ -197,13 +211,19 @@ def run_plots(
     for tid in selected_ids:
         try:
             profile = profiles_df[profiles_df["transect_id"] == tid]
+
             feat_slice = None
             if features_df is not None:
                 s = features_df[features_df["transect_id"] == tid]
                 feat_slice = s if not s.empty else None
 
+            trans_slice = None
+            if transitions_df is not None:
+                t = transitions_df[transitions_df["transect_id"] == tid]
+                trans_slice = t if not t.empty else None
+
             fig, ax = plt.subplots(figsize=(12, 5))
-            _render_spectral_axes(ax, profile, feat_slice,
+            _render_spectral_axes(ax, profile, feat_slice, trans_slice,
                                   title=f"Transect {tid}  ({year})",
                                   plot_spec=plot_spec)
             out = transect_dir / f"transect_{tid}_profile.png"
@@ -224,6 +244,7 @@ def run_plots(
         profiles_df=profiles_df,
         output_dir=overview_dir,
         features_df=features_df,
+        transitions_df=transitions_df,
         ncols=ncols,
         nrows=nrows,
         plot_spec=plot_spec,
@@ -312,6 +333,16 @@ def _parse_args() -> argparse.Namespace:
             "rendering any plots. Loads parquets but performs no computation."
         ),
     )
+    feat.add_argument(
+        "--transitions-path",
+        type=Path, default=None, metavar="PATH",
+        help=(
+            "Path to transitions_{year}.parquet produced by interpret.py. "
+            "When omitted, the default location "
+            "{output}/{year}/transitions_{year}.parquet is checked automatically. "
+            "Shell line annotations are shown whenever this file is present."
+        ),
+    )
 
     # ── Grid layout ────────────────────────────────────────────────────────
     grid = p.add_argument_group("grid layout")
@@ -331,12 +362,22 @@ def _parse_args() -> argparse.Namespace:
 
 def _resolve_parquet_paths(
     output: Path, year: str
-) -> tuple[Path, Optional[Path]]:
-    """Return (profiles_path, features_path) for a given year directory."""
-    year_dir      = output / year
-    profiles_path = year_dir / f"profiles_{year}.parquet"
-    features_path = year_dir / f"features_{year}.parquet"
-    return profiles_path, features_path if features_path.exists() else None
+) -> tuple[Path, Optional[Path], Optional[Path]]:
+    """
+    Return (profiles_path, features_path, transitions_path) for a year directory.
+
+    features_path and transitions_path are None when the files do not exist,
+    so callers can safely skip loading without an extra existence check.
+    """
+    year_dir          = output / year
+    profiles_path     = year_dir / f"profiles_{year}.parquet"
+    features_path     = year_dir / f"features_{year}.parquet"
+    transitions_path  = year_dir / f"transitions_{year}.parquet"
+    return (
+        profiles_path,
+        features_path    if features_path.exists()    else None,
+        transitions_path if transitions_path.exists() else None,
+    )
 
 
 if __name__ == "__main__":
@@ -344,7 +385,9 @@ if __name__ == "__main__":
 
     setup_logging(verbose=args.verbose)
 
-    profiles_path, features_path = _resolve_parquet_paths(args.output, args.year)
+    profiles_path, features_path, auto_transitions_path = _resolve_parquet_paths(
+        args.output, args.year
+    )
 
     if not profiles_path.exists():
         print(
@@ -355,12 +398,21 @@ if __name__ == "__main__":
         )
         sys.exit(1)
 
+    # --transitions-path overrides auto-discovery; fall back to the standard
+    # year-directory location when the flag is not supplied.
+    transitions_path = args.transitions_path or auto_transitions_path
+    if transitions_path is not None:
+        print(f"  [plot] Transitions: {transitions_path}")
+    else:
+        print("  [plot] Transitions: not found — shell line annotations skipped.")
+
     # ── --list-features: print available columns and exit ──────────────────
     if args.list_features:
-        profiles_df = pd.read_parquet(profiles_path)
-        features_df = pd.read_parquet(features_path) if features_path else None
+        profiles_df    = pd.read_parquet(profiles_path)
+        features_df    = pd.read_parquet(features_path)    if features_path    else None
+        transitions_df = pd.read_parquet(transitions_path) if transitions_path else None
 
-        grouped = list_available_columns(profiles_df, features_df)
+        grouped = list_available_columns(profiles_df, features_df, transitions_df)
         print_feature_table(grouped)
         sys.exit(0)
 
@@ -368,15 +420,16 @@ if __name__ == "__main__":
     plots_dir = args.output / args.year / "plots"
 
     run_plots(
-        year          = int(args.year),
-        profiles_path = profiles_path,
-        output_dir    = plots_dir,
-        features_path = features_path,
-        transect_ids  = args.transect_ids,
-        random_n      = args.random_n,
-        seed          = args.seed,
-        sample_every  = args.sample_every,
-        features      = args.features,
-        ncols         = args.plot_cols,
-        nrows         = args.plot_rows,
+        year             = int(args.year),
+        profiles_path    = profiles_path,
+        output_dir       = plots_dir,
+        features_path    = features_path,
+        transitions_path = transitions_path,
+        transect_ids     = args.transect_ids,
+        random_n         = args.random_n,
+        seed             = args.seed,
+        sample_every     = args.sample_every,
+        features         = args.features,
+        ncols            = args.plot_cols,
+        nrows            = args.plot_rows,
     )
