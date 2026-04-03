@@ -26,6 +26,8 @@ Example usage:
 
 from .shell_line import TransitionDetector
 
+from .pelt import detect_shell_line_pelt
+
 # Expose detection methods for advanced users / other applications
 from .nir import (
     detect_dry_wet_boundaries,
@@ -43,6 +45,9 @@ from .rgb import (
 __all__ = [
     # Main class
     'TransitionDetector',
+
+    # PELT mode
+    'detect_shell_line_pelt',
     
     # NIR detection
     'detect_dry_wet_boundaries',
