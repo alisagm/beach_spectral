@@ -55,6 +55,10 @@ from spectral_classifier.utils import (
     group_rasters_by_year,
     validate_output_directory,
     bundle_shell_lines_to_geojson,
+    band_mode_label,
+    band_mode_from_indices,
+    load_band_config,
+    resolve_band_indices,
 )
 from spectral_classifier.config import BAND_CONFIG_PATH, PLOT_GRID_COLS, PLOT_GRID_ROWS
 
@@ -331,6 +335,9 @@ def _plot_year(
         print(f"  [plot] Features parquet not found — NIR derivative overlay skipped.")
 
     plots_dir = year_output_dir / "plots"
+    year_config = load_band_config(BAND_CONFIG_PATH, year)
+    band_indices = resolve_band_indices(year_config)
+    band_label = band_mode_label(band_mode_from_indices(band_indices))
 
     # Summarise what will be plotted
     if transect_ids is not None:
@@ -351,6 +358,7 @@ def _plot_year(
             sample_every=sample_every,
             ncols=ncols,
             nrows=nrows,
+            band_label=band_label,
         )
         print(f"  [plot] Plots written to: {plots_dir}")
         return True

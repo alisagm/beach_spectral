@@ -121,6 +121,16 @@ def band_mode_from_indices(band_indices: dict) -> str:
     else:
         return "rgb"
     
+_BAND_MODE_DISPLAY = {
+    BAND_MODE_4BAND: "RGBN",
+    BAND_MODE_CIR:   "CIR",
+    BAND_MODE_RGB:   "RGB",
+}
+
+def band_mode_label(band_mode: str) -> str:
+    """Return a short display string for a band mode constant, e.g. 'CIR'."""
+    return _BAND_MODE_DISPLAY.get(band_mode, band_mode.upper())    
+    
 def detect_band_mode_from_features(features: pd.DataFrame) -> str:
     """
     Derive band mode from a computed features DataFrame.

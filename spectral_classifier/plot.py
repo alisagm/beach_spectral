@@ -55,11 +55,13 @@ from spectral_classifier.visualization.selector import (
 )
 from spectral_classifier.config import PLOT_GRID_COLS, PLOT_GRID_ROWS
 from spectral_classifier.utils import setup_logging
+from spectral_classifier.utils.band_config import (
+    load_band_config, resolve_band_indices, band_mode_from_indices, band_mode_label,
+)
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["run_plots", "plot_spectral_single"]
-
 
 # ── Core pipeline function ─────────────────────────────────────────────────────
 
@@ -76,6 +78,7 @@ def run_plots(
     features:         Optional[List[str]] = None,
     ncols:            int = PLOT_GRID_COLS,
     nrows:            int = PLOT_GRID_ROWS,
+    band_label:       Optional[str] = None,
 ) -> None:
     """
     Load Parquet checkpoints and produce spectral profile plots for *year*.
@@ -111,6 +114,10 @@ def run_plots(
                           overlay + shell line if transitions_path provided).
         ncols:            Overview grid columns (default from config).
         nrows:            Overview grid rows    (default from config).
+        band_label:       Short imagery-type label appended to plot titles,
+                          e.g. 'CIR', 'RGB', 'RGBN'. Derive via
+                          _band_mode_label(band_mode_from_indices(...)). 
+                          None → year only, e.g. "Transect 42  (2008)".
     """
     profiles_path = Path(profiles_path)
     output_dir    = Path(output_dir)
@@ -222,9 +229,10 @@ def run_plots(
                 t = transitions_df[transitions_df["transect_id"] == tid]
                 trans_slice = t if not t.empty else None
 
+            _year_label = f"{year} {band_label}" if band_label else str(year)
             fig, ax = plt.subplots(figsize=(12, 5))
             _render_spectral_axes(ax, profile, feat_slice, trans_slice,
-                                  title=f"Transect {tid}  ({year})",
+                                  title=f"Transect {tid}  ({_year_label})",
                                   plot_spec=plot_spec)
             out = transect_dir / f"transect_{tid}_profile.png"
             fig.savefig(out, dpi=150, bbox_inches="tight")
@@ -416,6 +424,22 @@ if __name__ == "__main__":
         print_feature_table(grouped)
         sys.exit(0)
 
+    # ── Derive band label from band_config.json (best-effort) ─────────────
+    band_label: Optional[str] = None
+    band_config_path = Path("INPUT") / "band_config.json"
+    if band_config_path.exists():
+        try:
+            year_config = load_band_config(band_config_path, args.year)
+            band_indices = resolve_band_indices(year_config)
+            band_label = band_mode_label(band_mode_from_indices(band_indices))
+        except Exception as exc:
+            logger.warning(
+                "Could not resolve band label for %s — plot titles will omit it. (%s)",
+                args.year, exc,
+            )
+    else:
+        logger.debug("band_config.json not found at %s — plot titles will omit band label.", band_config_path)
+
     # ── Normal plot run ────────────────────────────────────────────────────
     plots_dir = args.output / args.year / "plots"
 
@@ -432,4 +456,5 @@ if __name__ == "__main__":
         features         = args.features,
         ncols            = args.plot_cols,
         nrows            = args.plot_rows,
+        band_label       = band_label,
     )

@@ -35,11 +35,24 @@ def compute_all(data: pd.DataFrame, band_indices: dict) -> pd.DataFrame:
 
     Args:
         data:         DataFrame with columns [TransectID, distance, x, y, red, green, blue, nir].
+                      blue column must be present but may be NaN for CIR imagery.
                       nir column must be present but may be NaN for RGB imagery.
         band_indices: Output of resolve_band_indices(year_config). Determines
                       which features are computed — no column scanning performed.
+
     Returns:
         Copy of input DataFrame with all feature columns appended.
+
+    Brightness columns by band configuration:
+
+        column           RGBN        RGB         CIR
+        ───────────────────────────────────────────────
+        brightness       R+G+B+NIR   R+G+B       R+G+NIR
+        brightness_rgb   R+G+B       R+G+B       NaN
+        brightness_cir   R+G+NIR     NaN         R+G+NIR
+
+    interpret.py should always use the `brightness` column for boundary
+    detection; brightness_rgb and brightness_cir are supplementary features.
     """
     result = data.copy()
     has_nir  = band_indices["nir"]  is not None
@@ -61,17 +74,30 @@ def compute_all(data: pd.DataFrame, band_indices: dict) -> pd.DataFrame:
     # Spectral indices
     # ----------------------------------------------------------------
 
-    # brightness_rgb is always computed first — used by nir_ratio and
-    # detect_rgb_foam_peaks as well as being a feature in its own right.
-    brightness_rgb = compute_brightness(np.stack([red, green, blue], axis=1))
-
-    if has_nir:
-        brightness = compute_brightness(np.stack([red, green, blue, nir], axis=1))
+    # CHANGED: brightness_rgb only valid when blue is available.
+    if has_blue:
+        brightness_rgb = compute_brightness(np.stack([red, green, blue], axis=1))
     else:
+        brightness_rgb = np.full_like(red, np.nan, dtype=float)
+
+    # CHANGED: brightness_cir — R+G+NIR, valid for CIR and RGBN years.
+    if has_nir:
+        brightness_cir = compute_brightness(np.stack([red, green, nir], axis=1))
+    else:
+        brightness_cir = np.full_like(red, np.nan, dtype=float)
+
+    # CHANGED: brightness uses the full available band set per config:
+    #   RGBN -> R+G+B+NIR,  RGB -> brightness_rgb,  CIR -> brightness_cir
+    if has_blue and has_nir:
+        brightness = compute_brightness(np.stack([red, green, blue, nir], axis=1))
+    elif has_blue:   # RGB
         brightness = brightness_rgb
+    else:            # CIR
+        brightness = brightness_cir
 
     result['brightness']     = brightness
     result['brightness_rgb'] = brightness_rgb
+    result['brightness_cir'] = brightness_cir
     result['red_green_ratio'] = compute_red_green_ratio(red, green)
 
     if has_nir:
@@ -101,15 +127,29 @@ def compute_all(data: pd.DataFrame, band_indices: dict) -> pd.DataFrame:
         result['nir_d1_smooth'] = np.nan
         logger.debug("NIR not available — brightness derivatives are the primary signal")
 
-    result['brightness_d1']            = compute_band_derivative(brightness, distance)
-    result['brightness_d1_smooth']     = compute_derivative_smooth(brightness, distance)
-    result['brightness_rgb_d1']        = compute_band_derivative(brightness_rgb, distance)
-    result['brightness_rgb_d1_smooth'] = compute_derivative_smooth(brightness_rgb, distance)
+    result['brightness_d1']        = compute_band_derivative(brightness, distance)
+    result['brightness_d1_smooth'] = compute_derivative_smooth(brightness, distance)
 
-    result['red_d1']         = compute_band_derivative(red, distance)
-    result['red_d1_smooth']  = compute_derivative_smooth(red, distance)
-    result['green_d1']       = compute_band_derivative(green, distance)
-    result['green_d1_smooth']= compute_derivative_smooth(green, distance)
+    # CHANGED: brightness_rgb derivatives only when blue available.
+    if has_blue:
+        result['brightness_rgb_d1']        = compute_band_derivative(brightness_rgb, distance)
+        result['brightness_rgb_d1_smooth'] = compute_derivative_smooth(brightness_rgb, distance)
+    else:
+        result['brightness_rgb_d1']        = np.nan
+        result['brightness_rgb_d1_smooth'] = np.nan
+
+    # CHANGED: brightness_cir derivatives only when NIR available.
+    if has_nir:
+        result['brightness_cir_d1']        = compute_band_derivative(brightness_cir, distance)
+        result['brightness_cir_d1_smooth'] = compute_derivative_smooth(brightness_cir, distance)
+    else:
+        result['brightness_cir_d1']        = np.nan
+        result['brightness_cir_d1_smooth'] = np.nan
+
+    result['red_d1']          = compute_band_derivative(red, distance)
+    result['red_d1_smooth']   = compute_derivative_smooth(red, distance)
+    result['green_d1']        = compute_band_derivative(green, distance)
+    result['green_d1_smooth'] = compute_derivative_smooth(green, distance)
 
     if has_blue:
         result['blue_d1']        = compute_band_derivative(blue, distance)
@@ -124,25 +164,27 @@ def compute_all(data: pd.DataFrame, band_indices: dict) -> pd.DataFrame:
     result['rg_ratio_d1']        = compute_band_derivative(rg_ratio, distance)
     result['rg_ratio_d1_smooth'] = compute_derivative_smooth(rg_ratio, distance)
 
-    # Multiscale derivatives — NIR if available, brightness_rgb fallback.
+    # Multiscale derivatives — NIR if available, brightness fallback.
+    # CIR years have NIR so take the NIR path correctly; RGB falls back to brightness.
     if has_nir:
         for key, arr in compute_derivative_multiscale(nir, distance, 'nir').items():
             result[key] = arr
     else:
         for key, arr in compute_derivative_multiscale(
-                brightness_rgb, distance, 'brightness_rgb').items():
+                brightness, distance, 'brightness_rgb').items():
             result[key] = arr
         for w in [5, 7, 9, 11]:
             result[f'nir_d1_w{w}'] = np.nan
 
     # Second derivatives — same primary/fallback logic.
-    primary = nir if has_nir else brightness_rgb
+    primary = nir if has_nir else brightness
     for w in [5, 7, 9]:
         result[f'nir_d2_w{w}'] = compute_second_derivative(primary, distance, window_size=w)
 
     # ----------------------------------------------------------------
     # Statistical window features — operate on brightness as pd.Series
     # so rolling() retains the DataFrame index.
+    # brightness is always valid (RGBN, RGB, or CIR path above).
     # ----------------------------------------------------------------
     brightness_s = pd.Series(brightness, index=result.index)
 
@@ -154,12 +196,25 @@ def compute_all(data: pd.DataFrame, band_indices: dict) -> pd.DataFrame:
     # ----------------------------------------------------------------
     # Detection features
     # ----------------------------------------------------------------
-    band_cols = ['red', 'green', 'blue', 'nir'] if has_nir else ['red', 'green', 'blue']
+
+    # CHANGED: band_cols excludes blue for CIR, excludes nir for RGB.
+    if has_blue and has_nir:
+        band_cols = ['red', 'green', 'blue', 'nir']
+    elif has_blue:
+        band_cols = ['red', 'green', 'blue']
+    else:  # CIR
+        band_cols = ['red', 'green', 'nir']
+
     brightness_rgb_s = pd.Series(brightness_rgb, index=result.index)
 
-    result['spectral_angle']    = compute_spectral_angle(result[band_cols])
-    result['has_oscillations']  = detect_oscillations(brightness_s, window_size)
-    result['has_rgb_foam_peak'] = detect_rgb_foam_peaks(brightness_rgb_s)
+    result['spectral_angle']   = compute_spectral_angle(result[band_cols])
+    result['has_oscillations'] = detect_oscillations(brightness_s, window_size)
+
+    # CHANGED: foam peak detection requires blue — NaN for CIR.
+    if has_blue:
+        result['has_rgb_foam_peak'] = detect_rgb_foam_peaks(brightness_rgb_s)
+    else:
+        result['has_rgb_foam_peak'] = np.nan
 
     n_features = len(result.columns) - len(data.columns)
     logger.info(f"Computed {n_features} features")

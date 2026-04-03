@@ -13,6 +13,8 @@ from .band_config import (
     BAND_MODE_4BAND,
     BAND_MODE_CIR,
     BAND_MODE_RGB,
+    band_mode_label,
+    _BAND_MODE_DISPLAY,
 )
 
 # Data I/O
@@ -66,6 +68,8 @@ __all__ = [
     'BAND_MODE_4BAND',
     'BAND_MODE_CIR',
     'BAND_MODE_RGB',
+    'band_mode_label',
+    '_BAND_MODE_DISPLAY',
     # Data I/O
     'build_raster_index',
     'load_transects',
