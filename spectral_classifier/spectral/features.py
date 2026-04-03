@@ -14,6 +14,7 @@ from spectral_classifier.config import THRESHOLDS
 from .spectral_indices import (
     compute_ndvi, compute_ndwi, compute_nir_ratio,
     compute_brightness, compute_blue_red_ratio, compute_red_green_ratio,
+    compute_grvi,
 )
 from .derivatives import (
     compute_band_derivative, compute_derivative_smooth,
@@ -99,6 +100,7 @@ def compute_all(data: pd.DataFrame, band_indices: dict) -> pd.DataFrame:
     result['brightness_rgb'] = brightness_rgb
     result['brightness_cir'] = brightness_cir
     result['red_green_ratio'] = compute_red_green_ratio(red, green)
+    result['grvi'] = compute_grvi(green, red)
 
     if has_nir:
         result['ndvi']      = compute_ndvi(nir, red)

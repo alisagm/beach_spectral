@@ -24,6 +24,12 @@ def compute_nir_ratio(nir, brightness_rgb, epsilon=EPSILON) -> np.ndarray:
     nir_ratio = nir / (brightness_rgb + epsilon)
     return nir_ratio
 
+def compute_grvi(green, red, epsilon=EPSILON) -> np.ndarray:
+    """Standard Green-Red Vegetation Index (Green & Hay 1997).
+    Used here as an NDWI proxy for RGB-only years where NIR is unavailable."""
+    grvi = (green - red) / (green + red + epsilon)
+    return grvi
+
 # ========================================================================
 # RGB-based indices (always available)
 # ========================================================================
