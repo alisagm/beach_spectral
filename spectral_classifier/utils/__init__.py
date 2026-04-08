@@ -23,7 +23,8 @@ from .data_io import (
     load_transects,
     reproject_if_needed,
     find_overlapping_rasters,
-    RasterIndex
+    RasterIndex,
+    merge_profiles_and_features
 )
 
 # Export utilities
@@ -76,6 +77,7 @@ __all__ = [
     'reproject_if_needed',
     'find_overlapping_rasters',
     'RasterIndex',
+    'merge_profiles_and_features',
     # Export
     'export_results_to_csv',
     'export_summary_json',

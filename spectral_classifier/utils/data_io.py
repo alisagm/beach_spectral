@@ -9,6 +9,7 @@ import geopandas as gpd
 import rasterio
 from rasterio.crs import CRS
 from shapely.geometry import box
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -167,3 +168,53 @@ def find_overlapping_rasters(
         )
 
     return overlapping
+
+# ---------------------------------------------------------------------------
+# Parquet merge helper
+# ---------------------------------------------------------------------------
+
+def merge_profiles_and_features(
+    profiles_df: pd.DataFrame,
+    features_df: pd.DataFrame,
+    columns: list = None,
+) -> pd.DataFrame:
+    """
+    Join profiles and features parquets on (transect_id, distance).
+
+    The two parquets share the join key ``(transect_id, distance)`` but
+    contain disjoint column sets (raw bands vs derived features).  This
+    helper merges them into a single DataFrame so that downstream code
+    can access both raw DN values and computed indices per sample point.
+
+    Args:
+        profiles_df: Raw band samples (transect_id, distance, x, y,
+                     red, green, blue, nir).
+        features_df: Derived features (transect_id, distance, ndwi,
+                     nir_ratio, derivatives, ...).
+        columns:     Optional list of feature column names to keep.
+                     If None, all feature columns are included.
+                     ``transect_id`` and ``distance`` are always kept.
+
+    Returns:
+        Merged DataFrame with all profile columns plus selected feature
+        columns, one row per sample point.
+    """
+    join_keys = ["transect_id", "distance"]
+
+    if columns is not None:
+        # Always include join keys in the feature slice.
+        keep = list(set(join_keys) | set(columns))
+        features_subset = features_df[
+            [c for c in keep if c in features_df.columns]
+        ]
+    else:
+        features_subset = features_df
+
+    merged = profiles_df.merge(features_subset, on=join_keys, how="inner")
+
+    logger.info(
+        "Merged profiles (%d rows) + features (%d rows) -> %d rows, %d columns",
+        len(profiles_df), len(features_df), len(merged), len(merged.columns),
+    )
+
+    return merged

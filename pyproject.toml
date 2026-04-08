@@ -25,7 +25,8 @@ dependencies = [
     "matplotlib>=3.4.0",
     "seaborn",
     "pyarrow>=10.0.0",
-    "ruptures>1.1.10",
+    "ruptures>=1.1.10",
+    "hmmlearn>=0.3.3",
 ]
 
 [project.optional-dependencies]
